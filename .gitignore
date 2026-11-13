@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+.vscode/
+tests/*/evidence/*/nav_*.csv
+tests/*/evidence/*/*/nav_*.csv
