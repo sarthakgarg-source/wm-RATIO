@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export PYTHONUTF8=1)",
+      "Bash(python -)"
+    ]
+  }
+}

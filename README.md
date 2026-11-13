@@ -36,6 +36,9 @@ tests/T01/   PLAN.md, T01.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.
 tests/T02/   PLAN.md, T02.md (§1–3 DRAFT), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
              check_page.py; evidence/<run>/ (with t01_regression/ for gate V4b) after the run
 tests/       check_names.py (hygiene: no person's name; names from WM_REDACT_NAMES in the git-ignored .env)
+explore/     EXPLORATORY studies — description, never findings, never quoted as evidence for a rule:
+             E01_ratio_cycles/ (E01.md design; cycles.py → out/E01_cycles.html, E01_results.md, CSVs) — cyclicality of
+             the ten ratio series against sign-flipped random walks (2026-11-13); disclosed in T02.md §2
 ```
 
 **Result of T01 (run `headline`, 2026-11-12):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 (4 needed). The ±1 sd first-touch

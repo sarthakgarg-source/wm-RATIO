@@ -1,0 +1,82 @@
+{
+ "run_date": "2026-11-13",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
+ },
+ "draws": 2000,
+ "seeds": {
+  "sign_flips": "default_rng([101, pair_id])",
+  "month_shuffles": "default_rng([104, pair_id])"
+ },
+ "pairs": [
+  "N100|MC100",
+  "N100|SC100",
+  "N100|Micro250",
+  "N100|GoldMCX",
+  "MC100|SC100",
+  "MC100|Micro250",
+  "MC100|GoldMCX",
+  "SC100|Micro250",
+  "SC100|GoldMCX",
+  "Micro250|GoldMCX"
+ ],
+ "series": "plain ratio P_a / P_b on the last trading day of each ISO week (pair_frame); weekly change ln(r_t / r_t-1), drift removed",
+ "bands_weeks": [
+  [
+   2,
+   4
+  ],
+  [
+   4,
+   8
+  ],
+  [
+   8,
+   13
+  ],
+  [
+   13,
+   26
+  ],
+  [
+   26,
+   52
+  ],
+  [
+   52,
+   104
+  ],
+  [
+   104,
+   208
+  ],
+  [
+   208,
+   520
+  ]
+ ],
+ "vr_k": [
+  2,
+  4,
+  8,
+  13,
+  26,
+  52,
+  104
+ ],
+ "min_cycles": 3,
+ "min_k_frac": 4,
+ "min_years_month": 8,
+ "zigzag_h": "sd(z) * sqrt(26)",
+ "notable": [
+  5.0,
+  95.0
+ ],
+ "notable_count": [
+  42,
+  237
+ ],
+ "seconds": 3
+}
