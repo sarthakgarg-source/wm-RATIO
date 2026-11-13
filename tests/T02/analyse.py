@@ -196,7 +196,7 @@ def main():
     t1R = t1s[(t1s["series"] == "strategy") & (t1s["window"] == ref["window"]) & (t1s["exit"] == ref["exit"]) & (t1s["cost_bps"] == ref["cost_bps"])].set_index("pair")
     rows = []
     for p in deciding + gold_pairs:
-        sel = lambda d: d[(d["pair"] == p) & (d["window"] == ref["window"]) & (d["exit"] == ref["exit"])].set_index("date")
+        sel = lambda d: d[(d["pair"] == p) & (d["window"] == ref["window"]) & (d["exit"] == ref["exit"]) & d["mean"].notna()].set_index("date")   # banded weeks only
         a2, a1 = sel(decs), sel(t1d); idx = a2.index.intersection(a1.index)
         differ = int((a2.loc[idx, "state_after"] != a1.loc[idx, "state_after"]).sum())
         ent = lambda d: set((dt, s) for dt, s, r in zip(d.index, d["state_after"], d["reason"].fillna("")) if "enter" in r)

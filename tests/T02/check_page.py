@@ -78,8 +78,8 @@ def main():
     t1draws = lambda p: pd.read_csv(os.path.join(T01_EV, f"draws_{p.replace('|', '_')}_{ref['window']}_{ref['exit']}_{ref['cost_bps']:g}.csv")).query("null == 'N-A'")["cagr"]
     for p in deciding + gold:
         k = p.replace("|", "_")
-        a2 = decs[(decs["pair"] == p) & (decs["window"] == ref["window"]) & (decs["exit"] == ref["exit"])].set_index("date")
-        a1 = t1d[(t1d["pair"] == p) & (t1d["window"] == ref["window"]) & (t1d["exit"] == ref["exit"])].set_index("date"); idx = a2.index.intersection(a1.index)
+        a2 = decs[(decs["pair"] == p) & (decs["window"] == ref["window"]) & (decs["exit"] == ref["exit"]) & decs["mean"].notna()].set_index("date")
+        a1 = t1d[(t1d["pair"] == p) & (t1d["window"] == ref["window"]) & (t1d["exit"] == ref["exit"]) & t1d["mean"].notna()].set_index("date"); idx = a2.index.intersection(a1.index)
         e2 = set(zip(a2.index[a2["reason"].fillna("").str.contains("enter")], a2["state_after"][a2["reason"].fillna("").str.contains("enter")]))
         e1 = set(zip(a1.index[a1["reason"].fillna("").str.contains("enter")], a1["state_after"][a1["reason"].fillna("").str.contains("enter")]))
         exp[f"vs_weeks_{k}"] = len(idx); exp[f"vs_differ_{k}"] = int((a2.loc[idx, "state_after"] != a1.loc[idx, "state_after"]).sum()); exp[f"vs_same_{k}"] = len(e1 & e2); exp[f"vs_only1_{k}"] = len(e1 - e2); exp[f"vs_only2_{k}"] = len(e2 - e1)
