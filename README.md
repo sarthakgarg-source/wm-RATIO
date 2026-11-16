@@ -41,6 +41,9 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              the ten ratio series against sign-flipped random walks, point-in-time (expanding drift and threshold, counted
              look-ahead check) (2026-11-13); disclosed in T02.md §2. peaks_troughs_xlsx.py → out/E01_peaks_troughs_explained.xlsx:
              the peak/trough rule as live Excel formulas (toy example + N100 ÷ SC100), matched against cycles.py
+             E02_ratio_segments/ (E02.md design; segments.py → out/E02_segments.html, E02_results.md, CSVs) — HINDSIGHT
+             segmentation of the daily ratios with the desk's market-segregation method (scipy prominence → peak-to-peak
+             regression), trend in % a year, grid of settings, cross-checked against E01 (2026-11-16); disclosed in T02.md §2
 ```
 
 **Result of T01 (run `headline`, 2026-11-12):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 (4 needed). The ±1 sd first-touch

@@ -1,0 +1,65 @@
+{
+ "run_date": "2026-11-16",
+ "status": "EXPLORATORY, HINDSIGHT",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
+ },
+ "pairs": [
+  "N100|MC100",
+  "N100|SC100",
+  "N100|Micro250",
+  "N100|GoldMCX",
+  "MC100|SC100",
+  "MC100|Micro250",
+  "MC100|GoldMCX",
+  "SC100|Micro250",
+  "SC100|GoldMCX",
+  "Micro250|GoldMCX"
+ ],
+ "series": "plain ratio P_a / P_b, daily close on the pair's common calendar (pair_frame)",
+ "method_source": "wm-strategy-analytics market_segregation/scipy_peak_finding/market_segments.py and parameters.py (read 2026-11-16), re-implemented",
+ "grid": {
+  "m": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "T_per_year": [
+   0.05,
+   0.1,
+   0.2
+  ],
+  "merge": "T / 2",
+  "min_segment_rows": 30
+ },
+ "reference": {
+  "m": 3,
+  "T": 0.1
+ },
+ "code_exact": {
+  "m": 5,
+  "up": 30.0,
+  "down": -30.0,
+  "merge": 15.0
+ },
+ "code_exact_result": {
+  "segments": 18,
+  "sideways": 18,
+  "max_abs_angle_deg": 10.369599398711873
+ },
+ "cross_check_days": 56,
+ "turning_points_near_gold_roll": [
+  "SC100 \u00f7 GoldMCX 2026-01-29 trough",
+  "Micro250 \u00f7 GoldMCX 2026-01-29 trough"
+ ],
+ "hindsight": [
+  "prominence looks right of each peak",
+  "filter uses the average prominence of all peaks",
+  "local-maximum step uses the next peak",
+  "regressions span whole segments"
+ ],
+ "seconds": 1
+}
