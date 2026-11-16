@@ -3,7 +3,11 @@ E01 (EXPLORATORY): cyclicality in the ratio series. Design: explore/E01_ratio_cy
 Reads the approved data only through analysis/approved_data, on each pair's common calendar and decision weeks exactly as
 T01/T02 build them (analysis.ratio_engine.pair_frame). Writes explore/E01_ratio_cycles/out/:
 E01_cycles.html (the page), E01_results.md (every table), summary.csv, spectrum_bands.csv, variance_ratios.csv,
-seasonality.csv, swings.csv, audit.json.
+seasonality.csv, swings.csv, drift_check.csv (expanding drift removal vs none), audit.json.
+
+Point-in-time throughout (changed after the first run; E01.md "Added after the run"): the drift removed at week t is the average
+of the weekly changes BEFORE t and the zig-zag threshold at t comes from their sd (expanding windows, after a 52-week
+warm-up); nothing from later in the history enters any series, threshold or random walk.
 
     python explore/E01_ratio_cycles/cycles.py [--draws 2000]
 
@@ -30,7 +34,8 @@ from analysis.ratio_engine import INDEX_PAIRS, PAIRS, pair_frame  # noqa: E402
 BANDS = ((2, 4), (4, 8), (8, 13), (13, 26), (26, 52), (52, 104), (104, 208), (208, 520))   # cycle-length bands, weeks
 VR_K = (2, 4, 8, 13, 26, 52, 104)
 MIN_CYCLES, MIN_K_FRAC, MIN_YEARS_MONTH = 3, 4, 8     # a period must fit 3 times; k <= weeks / 4; 8 years in every month
-H_WEEKS = 26                                          # zig-zag threshold = sd(z) * sqrt(26): one typical half-year move
+H_WEEKS = 26                                          # zig-zag threshold = sd of earlier weeks * sqrt(26): one typical half-year move
+BURN = 52                                             # warm-up: the expanding drift and sd start from a year of earlier weeks
 SEED_SIGNS, SEED_MONTHS = 101, 104
 LO, HI = 5.0, 95.0                                    # notable: outside the random walks' middle 90%
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -124,17 +129,18 @@ def seasonality(m: pd.Series, rng, D: int) -> dict:
             "dispersion": disp, "p": float((1 + (dispN >= disp).sum()) / (D + 1)), "first": str(m.index[0]), "last": str(m.index[-1]), "n_months": int(len(m))}
 
 
-def zigzag(x: list, h: float) -> list:
-    """Turning points (index, +1 peak / -1 trough), each confirmed by a reversal of at least h from the extreme since the last one."""
+def zigzag(x: list, h: list) -> list:
+    """Turning points (index, +1 peak / -1 trough), each confirmed at point i by a reversal of at least h[i] from the extreme
+    since the last one; h[i] is known at point i (it comes from the weeks before it)."""
     tps = []; trend = 0; hi_i = lo_i = 0; ext = 0
     for i in range(1, len(x)):
-        v = x[i]
+        v = x[i]; hh = h[i]
         if trend == 0:
             if v > x[hi_i]:
                 hi_i = i
             if v < x[lo_i]:
                 lo_i = i
-            if x[hi_i] - x[lo_i] >= h:
+            if x[hi_i] - x[lo_i] >= hh:
                 if hi_i > lo_i:
                     tps.append((lo_i, -1)); trend = 1; ext = hi_i
                 else:
@@ -142,33 +148,63 @@ def zigzag(x: list, h: float) -> list:
         elif trend == 1:
             if v > x[ext]:
                 ext = i
-            elif x[ext] - v >= h:
+            elif x[ext] - v >= hh:
                 tps.append((ext, 1)); trend = -1; ext = i
         else:
             if v < x[ext]:
                 ext = i
-            elif v - x[ext] >= h:
+            elif v - x[ext] >= hh:
                 tps.append((ext, -1)); trend = 1; ext = i
     return tps
 
 
-def swing_stats(x: list, h: float):
+def swing_stats(x: list, h: list):
     tps = zigzag(x, h); d = np.diff([i for i, _ in tps])
     if len(d) < 3:
         return len(d), float("nan"), float("nan"), tps, d
     return len(d), float(np.median(d)), float(d.std() / d.mean()), tps, d
 
 
-def swings(z, Z, dates) -> dict:
-    h = float(z.std(ddof=1) * np.sqrt(H_WEEKS)); x = np.concatenate([[0.0], np.cumsum(z)])
-    n_sw, med, cv, tps, d = swing_stats(x.tolist(), h)
+def swings(z, Z, dates, hx) -> dict:
+    """z: the weekly residuals; hx[i]: the threshold at point i of the path x = cumsum(z) (x[0] = 0), from earlier weeks only.
+    The same threshold path is used for every random walk."""
+    x = np.concatenate([[0.0], np.cumsum(z)]); hl = [float(v) for v in hx]
+    n_sw, med, cv, tps, d = swing_stats(x.tolist(), hl)
     X = np.concatenate([np.zeros((Z.shape[0], 1)), np.cumsum(Z, axis=1)], axis=1); nN, medN, cvN, pooled = [], [], [], []
     for row in X:
-        a, b, c, _, dd = swing_stats(row.tolist(), h); nN.append(a); medN.append(b); cvN.append(c); pooled.append(dd)
+        a, b, c, _, dd = swing_stats(row.tolist(), hl); nN.append(a); medN.append(b); cvN.append(c); pooled.append(dd)
     amp = np.abs(np.diff(x[[i for i, _ in tps]])) if len(tps) > 1 else np.array([])
-    return {"h": h, "h_pct": float(np.exp(h) - 1), "x": x, "tps": tps, "durations": d, "n": n_sw, "median": med, "cv": cv, "median_amp_pct": float(np.exp(np.median(amp)) - 1) if len(amp) else float("nan"),
+    hp = np.exp(np.asarray(hl)) - 1
+    return {"h_pct_median": float(np.median(hp)), "h_pct_min": float(hp.min()), "h_pct_max": float(hp.max()), "h_pct_last": float(hp[-1]), "x": x, "tps": tps, "durations": d, "n": n_sw, "median": med, "cv": cv, "median_amp_pct": float(np.exp(np.median(amp)) - 1) if len(amp) else float("nan"),
             "pct_n": pctile(n_sw, nN), "pct_median": pctile(med, medN), "pct_cv": pctile(cv, cvN), "null_n_median": float(np.median(nN)), "null_median_median": float(np.nanmedian(medN)),
             "null_cv_median": float(np.nanmedian(cvN)), "pooled": np.concatenate(pooled) if pooled else np.array([]), "dates": dates}
+
+
+def point_in_time(g):
+    """The expanding estimates at each week t >= BURN, from g[0 .. t-1] only: drift m, sd, residual z = g[t] - m, and the
+    zig-zag threshold at each point of the path x[0 .. len(z)] (x[0] = 0 at the warm-up's last week)."""
+    cs, cs2 = np.concatenate([[0.0], np.cumsum(g)]), np.concatenate([[0.0], np.cumsum(g * g)])
+    t = np.arange(BURN, len(g)); k = t.astype(float)
+    m = cs[t] / k                                              # expanding drift: mean of g[0 .. t-1]
+    sd = np.sqrt((cs2[t] - k * m * m) / (k - 1))               # expanding sd (n - 1) of g[0 .. t-1]
+    z = g[t] - m
+    hx = np.concatenate([[sd[0]], sd]) * np.sqrt(H_WEEKS)
+    return t, m, sd, z, hx
+
+
+def pit_check(g, n_cuts=12):
+    """Look-ahead check: everything recomputed from the history cut at T must equal the full run's values up to T, and the
+    turning points found on the cut history must be the first turning points of the full run. Returns (checks, violations)."""
+    _, m, sd, z, hx = point_in_time(g); full = zigzag(np.concatenate([[0.0], np.cumsum(z)]).tolist(), hx.tolist())
+    checks, bad = 0, []
+    for T in np.unique(np.linspace(BURN + 10, len(g) - 1, n_cuts).astype(int)):
+        _, mc, sdc, zc, hxc = point_in_time(g[:T]); L = len(zc); checks += 2
+        if not (np.array_equal(mc, m[:L]) and np.array_equal(sdc, sd[:L]) and np.array_equal(zc, z[:L]) and np.array_equal(hxc, hx[:L + 1])):
+            bad.append(f"estimates differ when the history is cut at week {T}")
+        tc = zigzag(np.concatenate([[0.0], np.cumsum(zc)]).tolist(), hxc.tolist())
+        if tc != full[:len(tc)]:
+            bad.append(f"turning points differ when the history is cut at week {T}")
+    return checks, bad
 
 
 def verdict(r) -> dict:
@@ -226,32 +262,48 @@ def fp(v, d=1): return "—" if v != v else f"{v * 100:+.{d}f}%"
 def fpct(v): return "—" if v != v else (f"<b>{v:.1f}</b>" if notable(v) else f"{v:.1f}")
 
 
+def ab_html(a, b):
+    """Percentile with the expanding drift removed (A, the page) → with no drift removal (B); bold when the notable call differs."""
+    s = f"{f2(a, 0)}&nbsp;→&nbsp;{f2(b, 0)}"
+    return f"<b>{s}</b>" if notable(a) != notable(b) else s
+
+
 # ------------------------------------------------------------------------------------------------------------ the run
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--draws", type=int, default=2000); D = ap.parse_args().draws
-    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_daily(); R = {}
+    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_daily(); R = {}; PIT = [0, []]
     for pid, pair in enumerate(PAIRS):
         pf = pair_frame(px, pair, "plain"); wk = pf.loc[pf["decision"], "ratio"]
-        g = np.diff(np.log(wk.to_numpy())); z = g - g.mean(); n = len(z)
-        S = np.random.default_rng([SEED_SIGNS, pid]).choice(np.array([-1.0, 1.0]), size=(D, n)); Z = S * z; Z -= Z.mean(axis=1, keepdims=True)
-        R[pair] = {"pid": pid, "wk": wk, "n": n, "first": wk.index[0].date().isoformat(), "last": wk.index[-1].date().isoformat(), "drift_wk": float(g.mean()), "vol_wk": float(g.std(ddof=1)),
-                   "spec": spectrum(z, Z), "vr": variance_ratios(z, Z), "season": seasonality(monthly(pf), np.random.default_rng([SEED_MONTHS, pid]), D), "swing": swings(z, Z, wk.index)}
+        g = np.diff(np.log(wk.to_numpy()))                         # g[i] = the change over the week ending wk.index[i + 1]
+        # point-in-time: the drift and sd at week t come only from the weekly changes before it (expanding windows)
+        t, m, sd, z, hx = point_in_time(g); n = len(z)
+        c_, b_ = pit_check(g); PIT[0] += c_; PIT[1] += [f"{pair}: {x}" for x in b_]
+        pw = wk.index[BURN:]                                       # the path's dates: x[0] at wk.index[BURN]
+        S = np.random.default_rng([SEED_SIGNS, pid]).choice(np.array([-1.0, 1.0]), size=(D, n)); Z = S * z   # random signs; no demeaning
+        R[pair] = {"pid": pid, "wk": wk, "n": n, "pw": pw, "ratio_first": wk.index[0].date().isoformat(), "first": pw[0].date().isoformat(), "last": wk.index[-1].date().isoformat(),
+                   "drift_wk": float(g.mean()), "vol_wk": float(g.std(ddof=1)),                       # descriptive summaries only; used by no calculation
+                   "spec": spectrum(z, Z), "vr": variance_ratios(z, Z), "season": seasonality(monthly(pf), np.random.default_rng([SEED_MONTHS, pid]), D), "swing": swings(z, Z, pw, hx)}
+        # the same checks with NO drift removal: the raw weekly changes, against random walks with the expanding drift added back
+        R[pair]["vr_raw"] = variance_ratios(g[t], Z + m); R[pair]["swing_raw"] = swings(g[t], Z + m, pw, hx); R[pair]["spec_raw"] = spectrum(g[t], Z + m)
         R[pair]["band_mean"] = wk.rolling(52, min_periods=42).mean(); R[pair]["band_sd"] = wk.rolling(52, min_periods=42).std()
         R[pair]["verdict"] = verdict(R[pair])
         print(f"  {pair:18s} {R[pair]['first']} → {R[pair]['last']}  {n:4d} weekly changes  [{time.time() - t0:5.0f}s]", flush=True)
 
+    if PIT[1] or PIT[0] == 0:                                      # a look-ahead violation is a failed gate, not a warning
+        sys.exit("look-ahead check FAILED: " + "; ".join(PIT[1]) if PIT[1] else "look-ahead check ran nothing")
+    print(f"  look-ahead check: {PIT[0]} checks, 0 violations")
     # ---------------------------------------------------------------- tables (CSV + markdown)
     summ, bands, vrs, seas, sws = [], [], [], [], []
     for p in ORDER:
         r = R[p]; sp = r["spec"]; se = r["season"]; sw = r["swing"]
-        summ.append({"pair": p, "first": r["first"], "last": r["last"], "weekly_changes": r["n"], "drift_pct_per_yr": (np.exp(r["drift_wk"] * 52.18) - 1), "vol_pct_per_yr": r["vol_wk"] * np.sqrt(52.18),
+        summ.append({"pair": p, "ratio_first": r["ratio_first"], "first": r["first"], "last": r["last"], "weekly_changes": r["n"], "drift_pct_per_yr": (np.exp(r["drift_wk"] * 52.18) - 1), "vol_pct_per_yr": r["vol_wk"] * np.sqrt(52.18),
                      "spectrum_p": sp["p_global"], "spectrum_top_band": sp["top"]["band"], "spectrum_top_ratio": sp["top"]["ratio"], **{f"vr_{v['k']}": v["vr"] for v in r["vr"]}, **{f"vr_{v['k']}_pct": v["pct"] for v in r["vr"]},
-                     "season_reportable": se["reportable"], "season_p": se["p"], "swing_h_pct": sw["h_pct"], "swings": sw["n"], "swing_median_wk": sw["median"], "swing_cv": sw["cv"], "swing_pct_n": sw["pct_n"], "swing_pct_median": sw["pct_median"], "swing_pct_cv": sw["pct_cv"],
+                     "season_reportable": se["reportable"], "season_p": se["p"], "swing_h_pct_median": sw["h_pct_median"], "swing_h_pct_min": sw["h_pct_min"], "swing_h_pct_max": sw["h_pct_max"], "swings": sw["n"], "swing_median_wk": sw["median"], "swing_cv": sw["cv"], "swing_pct_n": sw["pct_n"], "swing_pct_median": sw["pct_median"], "swing_pct_cv": sw["pct_cv"],
                      **{f"verdict_{k}": v for k, v in r["verdict"].items()}})
         bands += [{"pair": p, **{k: v for k, v in b.items()}} for b in sp["bands"]]
         vrs += [{"pair": p, **v} for v in r["vr"]]
         seas += [{"pair": p, "reportable": se["reportable"], "p_dispersion": se["p"], **m} for m in se["months"]]
-        sws += [{"pair": p, "date": sw["dates"][i].date().isoformat(), "turn": "peak" if t > 0 else "trough", "ratio": float(r["wk"].iloc[i]), "drift_removed": float(r["wk"].iloc[0] * np.exp(sw["x"][i]))} for i, t in sw["tps"]]
+        sws += [{"pair": p, "date": sw["dates"][i].date().isoformat(), "turn": "peak" if t > 0 else "trough", "ratio": float(r["wk"].iloc[BURN + i]), "drift_removed": float(r["wk"].iloc[BURN] * np.exp(sw["x"][i]))} for i, t in sw["tps"]]
     S_, B_, V_, M_, W_ = (pd.DataFrame(x) for x in (summ, bands, vrs, seas, sws))
     for df, name in ((S_, "summary"), (B_, "spectrum_bands"), (V_, "variance_ratios"), (M_, "seasonality"), (W_, "swings")):
         df.to_csv(os.path.join(OUT, f"{name}.csv"), index=False)
@@ -259,12 +311,41 @@ def main():
     allp = [b["pct"] for p in ORDER for b in R[p]["spec"]["bands"] if b["bins"]] + [v["pct"] for p in ORDER for v in R[p]["vr"] if v["reportable"]]
     allp += [m["pct"] for p in ORDER if R[p]["season"]["reportable"] for m in R[p]["season"]["months"]] + [R[p]["swing"][k] for p in ORDER for k in ("pct_n", "pct_median", "pct_cv")]
     allp = [x for x in allp if x == x]; n_not = sum(notable(x) for x in allp); n_all = len(allp)
+    # the drift check: every statistic that the drift removal can touch, (A) expanding drift removed (the page) vs (B) none
+    SW_LAB = (("pct_n", "swings: count"), ("pct_median", "swings: median length"), ("pct_cv", "swings: regularity (CV)"))
+    dc = []
+    for p in ORDER:
+        r = R[p]
+        dc += [{"pair": p, "statistic": f"VR {a['k']} wk", "pct_A_expanding_drift_removed": a["pct"], "pct_B_no_drift_removal": b["pct"], "flips": bool(notable(a["pct"]) != notable(b["pct"]))}
+               for a, b in zip(r["vr"], r["vr_raw"]) if a["reportable"]]
+        dc += [{"pair": p, "statistic": lab, "pct_A_expanding_drift_removed": r["swing"][k], "pct_B_no_drift_removal": r["swing_raw"][k], "flips": bool(notable(r["swing"][k]) != notable(r["swing_raw"][k]))} for k, lab in SW_LAB]
+        dc += [{"pair": p, "statistic": f"spectrum {a['band']} wk", "pct_A_expanding_drift_removed": a["pct"], "pct_B_no_drift_removal": b["pct"], "flips": bool(notable(a["pct"]) != notable(b["pct"]))}
+               for a, b in zip(r["spec"]["bands"], r["spec_raw"]["bands"]) if a["bins"]]
+    DC = pd.DataFrame(dc); DC.to_csv(os.path.join(OUT, "drift_check.csv"), index=False); n_flip, n_dc = int(DC["flips"].sum()), len(DC)
+    flipped = [f"{nice(x['pair'])} {x['statistic']} ({x['pct_A_expanding_drift_removed']:.1f} → {x['pct_B_no_drift_removal']:.1f})" for _, x in DC[DC["flips"]].iterrows()]
+
+    def nflip(prefix):
+        sub = DC[DC["statistic"].str.startswith(prefix)]; return f"{int(sub['flips'].sum())} of {len(sub)}"
+
+    def spec_changed(p):
+        sub = DC[(DC["pair"] == p) & DC["statistic"].str.startswith("spectrum")]; return f"{int(sub['flips'].sum())} of {len(sub)}"
+    by_check = f"variance ratios {nflip('VR')}, swings {nflip('swings')}, spectrum bands {nflip('spectrum')}"
+    # pairs where A and B really disagree: more than one call changes AND the percentile moves by 10 points or more
+    # (a percentile drifting from 95.4 to 94.9 changes the call but is not a disagreement)
+    big = DC["flips"] & ((DC["pct_A_expanding_drift_removed"] - DC["pct_B_no_drift_removal"]).abs() >= 10)
+    flip_pairs = [q for q in ORDER if int((big & (DC["pair"] == q)).sum()) >= 2]
     audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "draws": D, "seeds": {"sign_flips": f"default_rng([{SEED_SIGNS}, pair_id])", "month_shuffles": f"default_rng([{SEED_MONTHS}, pair_id])"},
-             "pairs": PAIRS, "series": "plain ratio P_a / P_b on the last trading day of each ISO week (pair_frame); weekly change ln(r_t / r_t-1), drift removed", "bands_weeks": BANDS, "vr_k": VR_K,
-             "min_cycles": MIN_CYCLES, "min_k_frac": MIN_K_FRAC, "min_years_month": MIN_YEARS_MONTH, "zigzag_h": f"sd(z) * sqrt({H_WEEKS})", "notable": [LO, HI], "notable_count": [n_not, n_all], "seconds": round(time.time() - t0)}
+             "pairs": PAIRS, "series": "plain ratio P_a / P_b on the last trading day of each ISO week (pair_frame); weekly change g_t = ln(r_t / r_t-1)",
+             "point_in_time": {"drift": "expanding mean of the weekly changes before week t", "zigzag_h": f"expanding sd (n - 1) of the weekly changes before week t * sqrt({H_WEEKS})",
+                               "burn_in_weeks": BURN, "random_walks": "the point-in-time residuals with random signs; no demeaning", "whole_history_estimates_used": "none",
+                               "look_ahead_check": {"what": "history cut at 12 dates per pair: estimates up to the cut equal the full run's, turning points are a prefix of the full run's", "checks": PIT[0], "violations": PIT[1]}},
+             "bands_weeks": BANDS, "vr_k": VR_K, "min_cycles": MIN_CYCLES, "min_k_frac": MIN_K_FRAC, "min_years_month": MIN_YEARS_MONTH, "notable": [LO, HI], "notable_count": [n_not, n_all],
+             "drift_check": {"what": "A = expanding drift removed (the page); B = no drift removal, random walks with the expanding drift added back", "flips": n_flip, "statistics": n_dc, "by_check": by_check, "flipped": flipped},
+             "seconds": round(time.time() - t0)}
     json.dump(audit, open(os.path.join(OUT, "audit.json"), "w", encoding="utf-8"), indent=1, default=str)
 
     md = [f"# E01 results — cyclicality in the ratio series (EXPLORATORY)\n", f"_Generated by `explore/E01_ratio_cycles/cycles.py` on {audit['run_date']}; {D:,} random-walk paths per pair (sign flips, seed `default_rng([{SEED_SIGNS}, pair_id])`). Description, not a finding. Percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
+          f"_Point-in-time: the drift removed at each week is the average of the weekly changes before it, and the zig-zag threshold comes from their sd (expanding windows after a {BURN}-week warm-up); no whole-history estimate enters any series, threshold or random walk. Windows below start after the warm-up (the month-of-year check needs no estimate and uses every month)._\n",
           f"**Against chance:** {n_not} of {n_all} percentiles are notable; about {0.1 * n_all:.0f} would be if every ratio were a random walk with its own volatility (the percentiles are not independent: the pairs share legs and the checks overlap).\n",
           "## Per pair\n", "| pair | window | weekly changes | variance ratios | spectrum | month of year | swings |", "|---|---|---|---|---|---|---|"]
     md += [f"| {nice(p)} | {R[p]['first']} → {R[p]['last']} | {R[p]['n']} | {R[p]['verdict']['vr']} | {R[p]['verdict']['spectrum']} | {R[p]['verdict']['season']} | {R[p]['verdict']['swings']} |" for p in ORDER]
@@ -274,14 +355,24 @@ def main():
     md += [f"| {nice(p)} | {R[p]['spec']['p_global']:.3f} | " + " | ".join((f"{b['ratio']:.2f} ({'**' if notable(b['pct']) else ''}{b['pct']:.1f}{'**' if notable(b['pct']) else ''})" if b["bins"] else "—") for b in R[p]["spec"]["bands"]) + " |" for p in ORDER]
     md += ["\n## Month of year: average change of the ratio in each calendar month (percentile among within-year shuffles)\n", "| pair | p | " + " | ".join(MONTHS) + " |", "|---|---|" + "---|" * 12]
     md += [f"| {nice(p)} | {R[p]['season']['p']:.3f}{'' if R[p]['season']['reportable'] else ' (too short)'} | " + " | ".join(f"{m['mean'] * 100:+.1f}% ({'**' if notable(m['pct']) and R[p]['season']['reportable'] else ''}{m['pct']:.0f}{'**' if notable(m['pct']) and R[p]['season']['reportable'] else ''})" for m in R[p]["season"]["months"]) + " |" for p in ORDER]
-    md += ["\n## Swings (zig-zag on the drift-removed ratio, reversal ≥ one typical half-year move)\n", "| pair | threshold | swings (pct) | median length, wk (pct) | regularity CV (pct) | random walks: swings / median / CV | median swing size |", "|---|---|---|---|---|---|---|"]
-    md += [f"| {nice(p)} | {R[p]['swing']['h_pct'] * 100:.1f}% | {R[p]['swing']['n']} ({R[p]['swing']['pct_n']:.1f}) | {f2(R[p]['swing']['median'], 0)} ({f2(R[p]['swing']['pct_median'], 1)}) | {f2(R[p]['swing']['cv'])} ({f2(R[p]['swing']['pct_cv'], 1)}) | {R[p]['swing']['null_n_median']:.0f} / {R[p]['swing']['null_median_median']:.0f} / {R[p]['swing']['null_cv_median']:.2f} | {fp(R[p]['swing']['median_amp_pct'])} |" for p in ORDER]
+    md += ["\n## Swings (zig-zag on the drift-removed ratio, reversal ≥ one typical half-year move from earlier weeks)\n", "| pair | threshold: median (range) | swings (pct) | median length, wk (pct) | regularity CV (pct) | random walks: swings / median / CV | median swing size |", "|---|---|---|---|---|---|---|"]
+    md += [f"| {nice(p)} | {R[p]['swing']['h_pct_median'] * 100:.1f}% ({R[p]['swing']['h_pct_min'] * 100:.1f}–{R[p]['swing']['h_pct_max'] * 100:.1f}%) | {R[p]['swing']['n']} ({R[p]['swing']['pct_n']:.1f}) | {f2(R[p]['swing']['median'], 0)} ({f2(R[p]['swing']['pct_median'], 1)}) | {f2(R[p]['swing']['cv'])} ({f2(R[p]['swing']['pct_cv'], 1)}) | {R[p]['swing']['null_n_median']:.0f} / {R[p]['swing']['null_median_median']:.0f} / {R[p]['swing']['null_cv_median']:.2f} | {fp(R[p]['swing']['median_amp_pct'])} |" for p in ORDER]
+    def ab(a, b): return f"{'**' if notable(a) != notable(b) else ''}{f2(a, 0)} → {f2(b, 0)}{'**' if notable(a) != notable(b) else ''}"
+    md += ["\n## Does the drift removal matter?\n",
+           "Both versions use only past data. **A** = the page: the drift removed at each week is the average of the weekly changes before it (expanding). "
+           "**B** = no drift removal: the real ratio's raw weekly changes, against the same random walks with the expanding drift added back. "
+           "Percentiles A → B; **bold** = the notable call changes; the spectrum column counts the cycle-length bands whose call changes (all bands are in drift_check.csv), with the overall p A → B. The month-of-year check never removes a drift.\n",
+           f"**{n_flip} of {n_dc}** statistics change their notable call ({by_check})" + (": " + "; ".join(flipped) + "." if flipped else ".")
+           + (f" Where A and B disagree on more than one call ({', '.join(nice(q) for q in flip_pairs)}) neither reading is reliable: the point-in-time drift starts from the warm-up year, and where that year differs sharply from what followed (the Micro250 pairs' warm-up is 2022) removing it leaves a slow trend in the residuals (A leans to 'continues') while adding it to the random walks leans B the other way." if flip_pairs else ""), "",
+           "| pair | drift a year (description) | " + " | ".join(f"VR {k} wk" for k in VR_K) + " | swings | median length | regularity (CV) | spectrum bands changed | spectrum overall p |", "|---|---|" + "---|" * (len(VR_K) + 5)]
+    md += [f"| {nice(p)} | {(np.exp(R[p]['drift_wk'] * 52.18) - 1) * 100:+.1f}% | " + " | ".join((ab(a["pct"], b["pct"]) if a["reportable"] else "—") for a, b in zip(R[p]["vr"], R[p]["vr_raw"]))
+           + " | " + " | ".join(ab(R[p]["swing"][k], R[p]["swing_raw"][k]) for k, _ in SW_LAB) + f" | {spec_changed(p)} | {R[p]['spec']['p_global']:.2f} → {R[p]['spec_raw']['p_global']:.2f} |" for p in ORDER]
     open(os.path.join(OUT, "E01_results.md"), "w", encoding="utf-8").write("\n".join(md) + "\n")
 
     # ---------------------------------------------------------------- figures
     figs = {}
     # 0a. the ten ratios
-    f = make_subplots(rows=5, cols=2, subplot_titles=[f"{nice(p)}<br><span style='font-size:11px'>{R[p]['first']} → {R[p]['last']}</span>" for p in ORDER], vertical_spacing=0.06, horizontal_spacing=0.08)
+    f = make_subplots(rows=5, cols=2, subplot_titles=[f"{nice(p)}<br><span style='font-size:11px'>{R[p]['ratio_first']} → {R[p]['last']}</span>" for p in ORDER], vertical_spacing=0.06, horizontal_spacing=0.08)
     for i, p in enumerate(ORDER):
         r = R[p]; row, col = i // 2 + 1, i % 2 + 1; lead = i == 0; wk = r["wk"]
         f.add_trace(go.Scatter(x=wk.index, y=r["band_mean"] - r["band_sd"], mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False, legendgroup="band"), row=row, col=col)
@@ -303,18 +394,19 @@ def main():
     # per-pair figures: every pair's traces, one visible at a time (the selector at the top)
     titles = {k: {} for k in ("ratio", "spec", "vr", "season", "dur")}
     fA = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.55, 0.45], vertical_spacing=0.08,
-                       subplot_titles=("the ratio with T02's band (trailing 52-week mean ± 1 sd)", "the same ratio with its average drift taken out, and the zig-zag turning points"))
+                       subplot_titles=("the ratio with T02's band (trailing 52-week mean ± 1 sd)", "the same ratio with its drift removed point-in-time (the average of earlier weeks only), and the zig-zag turning points"))
     fB, fC, fD, fE = go.Figure(), go.Figure(), go.Figure(), go.Figure()
     for p in ORDER:
-        r = R[p]; wk = r["wk"]; sw = r["swing"]; sp = r["spec"]; vis = p == DEFAULT_PAIR; dr = wk.iloc[0] * np.exp(sw["x"])
+        r = R[p]; wk = r["wk"]; sw = r["swing"]; sp = r["spec"]; vis = p == DEFAULT_PAIR; pw = r["pw"]; dr = wk.iloc[BURN] * np.exp(sw["x"])
         fA.add_trace(go.Scatter(x=wk.index, y=r["band_mean"] - r["band_sd"], mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False, meta=p, visible=vis), row=1, col=1)
         fA.add_trace(go.Scatter(x=wk.index, y=r["band_mean"] + r["band_sd"], mode="lines", line={"width": 0}, fill="tonexty", fillcolor=BAND_FILL, name="mean ± 1 sd", hoverinfo="skip", meta=p, visible=vis), row=1, col=1)
         fA.add_trace(go.Scatter(x=wk.index, y=wk, mode="lines", line={"color": BLUE, "width": 1.5}, name="ratio", meta=p, visible=vis, hovertemplate="%{x|%Y-%m-%d}<br>ratio %{y:.4f}<extra></extra>"), row=1, col=1)
-        fA.add_trace(go.Scatter(x=wk.index, y=dr, mode="lines", line={"color": INK2, "width": 1.2}, name="drift removed", meta=p, visible=vis, hovertemplate="%{x|%Y-%m-%d}<br>drift removed %{y:.4f}<extra></extra>"), row=2, col=1)
+        fA.add_trace(go.Scatter(x=pw, y=dr, mode="lines", line={"color": INK2, "width": 1.2}, name="drift removed (point-in-time)", meta=p, visible=vis, hovertemplate="%{x|%Y-%m-%d}<br>drift removed %{y:.4f}<extra></extra>"), row=2, col=1)
         pk = [i for i, t in sw["tps"] if t > 0]; tr = [i for i, t in sw["tps"] if t < 0]
-        fA.add_trace(go.Scatter(x=wk.index[pk], y=dr[pk], mode="markers", marker={"symbol": "triangle-down", "size": 10, "color": ORANGE}, name="peak", meta=p, visible=vis, hovertemplate="peak %{x|%Y-%m-%d}<extra></extra>"), row=2, col=1)
-        fA.add_trace(go.Scatter(x=wk.index[tr], y=dr[tr], mode="markers", marker={"symbol": "triangle-up", "size": 10, "color": AQUA}, name="trough", meta=p, visible=vis, hovertemplate="trough %{x|%Y-%m-%d}<extra></extra>"), row=2, col=1)
-        titles["ratio"][p] = two_line(f"{nice(p)} · {r['first']} → {r['last']}", f"turning point = a reversal of {sw['h_pct'] * 100:.1f}% from the last extreme (one typical half-year move for this pair)")
+        fA.add_trace(go.Scatter(x=pw[pk], y=dr[pk], mode="markers", marker={"symbol": "triangle-down", "size": 10, "color": ORANGE}, name="peak", meta=p, visible=vis, hovertemplate="peak %{x|%Y-%m-%d}<extra></extra>"), row=2, col=1)
+        fA.add_trace(go.Scatter(x=pw[tr], y=dr[tr], mode="markers", marker={"symbol": "triangle-up", "size": 10, "color": AQUA}, name="trough", meta=p, visible=vis, hovertemplate="trough %{x|%Y-%m-%d}<extra></extra>"), row=2, col=1)
+        titles["ratio"][p] = two_line(f"{nice(p)} · {r['ratio_first']} → {r['last']} · lower panel from {r['first']} (after a {BURN}-week warm-up)",
+                                      f"turning point = a reversal of one typical half-year move, from earlier weeks only: {sw['h_pct_min'] * 100:.1f}–{sw['h_pct_max'] * 100:.1f}% over the window, {sw['h_pct_last'] * 100:.1f}% now")
         cv = sp["curve"]
         fB.add_trace(go.Scatter(x=cv["period"], y=cv["lo"], mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False, meta=p, visible=vis))
         fB.add_trace(go.Scatter(x=cv["period"], y=cv["hi"], mode="lines", line={"width": 0}, fill="tonexty", fillcolor=NULL_FILL, name="random walks, middle 90%", hoverinfo="skip", meta=p, visible=vis))
@@ -379,15 +471,18 @@ def main():
     tab_vr = {p: tbl(["horizon", "VR", "random walks 5th–95th", "percentile"], [[f"{v['k']} wk", f2(v["vr"]) if v["reportable"] else "—", f"{v['null_lo']:.2f}–{v['null_hi']:.2f}" if v["reportable"] else "—", fpct(v["pct"])] for v in R[p]["vr"]]) for p in ORDER}
     tab_season = {p: tbl(["month", "years", "average change", "up in", "shuffles 5th–95th", "percentile"], [[m["month"], m["years"], fp(m["mean"], 2), f"{m['share_up'] * 100:.0f}%", f"{fp(m['null_lo'], 2)} … {fp(m['null_hi'], 2)}", fpct(m["pct"]) if R[p]["season"]["reportable"] else f"{m['pct']:.0f} (not tested)"] for m in R[p]["season"]["months"]]) for p in ORDER}
     tab_dur = {p: tbl(["", "the ratio", "random walks (median)", "percentile"], [["completed swings", R[p]["swing"]["n"], f"{R[p]['swing']['null_n_median']:.0f}", fpct(R[p]["swing"]["pct_n"])], ["median length, weeks", f2(R[p]["swing"]["median"], 0), f"{R[p]['swing']['null_median_median']:.0f}", fpct(R[p]["swing"]["pct_median"])],
-                                                                                    ["regularity (CV of lengths; lower = more regular)", f2(R[p]["swing"]["cv"]), f"{R[p]['swing']['null_cv_median']:.2f}", fpct(R[p]["swing"]["pct_cv"])], ["median swing size", fp(R[p]["swing"]["median_amp_pct"]), "", ""], ["reversal threshold", f"{R[p]['swing']['h_pct'] * 100:.1f}%", "same", ""]]) for p in ORDER}
+                                                                                    ["regularity (CV of lengths; lower = more regular)", f2(R[p]["swing"]["cv"]), f"{R[p]['swing']['null_cv_median']:.2f}", fpct(R[p]["swing"]["pct_cv"])], ["median swing size", fp(R[p]["swing"]["median_amp_pct"]), "", ""], ["reversal threshold (from earlier weeks; median, range)", f"{R[p]['swing']['h_pct_median'] * 100:.1f}% ({R[p]['swing']['h_pct_min'] * 100:.1f}–{R[p]['swing']['h_pct_max'] * 100:.1f}%)", "same path", ""]]) for p in ORDER}
     summary_rows = [[nice(p), f"{R[p]['first']} → {R[p]['last']}", R[p]["n"], R[p]["verdict"]["vr"], R[p]["verdict"]["spectrum"], R[p]["verdict"]["season"], R[p]["verdict"]["swings"]] for p in ORDER]
     opts = "".join(f"<option value='{html.escape(p, quote=True)}'{' selected' if p == DEFAULT_PAIR else ''}>{nice(p)}</option>" for p in ORDER)
     H = [PAGE_HEAD.replace("__CSS__", CSS), "<header class='bar'><div class='bar-inner'><b>E01 · ratio cycles</b><span class='tag'>EXPLORATORY</span>",
          f"<label>Pair <select id='pair'>{opts}</select></label><button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>Is there cyclicality in the ratio series?</h1>",
-         f"<p>The ten pair ratios P_a ÷ P_b (plain, not logged), weekly, on each pair's common calendar as T01/T02 use it. Every statistic is compared with {D:,} random walks that have the ratio's own week-by-week volatility (each week's change kept, its sign flipped at random), so a pattern any random series would also show is not mistaken for a cycle. Generated {audit['run_date']} from the approved data of 2026-11-12. <b>Description, not a finding</b>: nothing here tests a trading rule; anything that looks usable needs its own pre-registered test.</p>",
+         f"<p>The ten pair ratios P_a ÷ P_b (plain, not logged), weekly, on each pair's common calendar as T01/T02 use it. Every statistic is compared with {D:,} random walks that have the ratio's own week-by-week volatility (each week's change kept, its sign flipped at random), so a pattern any random series would also show is not mistaken for a cycle. Generated {audit['run_date']} from the approved data of 2026-11-12. <b>Description, not a finding</b>: nothing here tests a trading rule; anything that looks usable needs its own pre-registered test.</p>"
+         f"<p><b>Point-in-time throughout.</b> At every week, the drift that is removed is the average of the weekly changes <i>before</i> it, and the swing threshold comes from their sd (expanding windows, after a {BURN}-week warm-up). No number from later in the history enters any series, threshold or random walk; the band is the trailing 52 weeks. "
+         f"Checked, not assumed: each pair's history is cut at 12 dates and everything recomputed from the cut history must equal the full run up to the cut, with the turning points found on the cut history the first ones of the full run — {PIT[0]} checks, {len(PIT[1])} violations. "
+         "The statistics themselves summarise each pair's whole window, as any description of a history does.</p>",
          f"<div class='card'><p style='margin:4px 0'><b>Against chance:</b> {n_not} of {n_all} percentiles on this page are notable (at or below the 5th or at or above the 95th); about {0.1 * n_all:.0f} would be if every ratio were a random walk. The pairs share legs and the checks overlap, so these are not independent.</p></div>",
-         "<h2>What each pair shows</h2><div class='card'>" + tbl(["pair", "window", "weekly changes", "variance ratios (does a move continue or reverse?)", "spectrum (any cycle length?)", "month of year", "swings (zig-zag)"], summary_rows, cls="txt") + "</div>",
+         "<h2>What each pair shows</h2><div class='card'>" + tbl(["pair", f"window (after the {BURN}-week warm-up)", "weekly changes", "variance ratios (does a move continue or reverse?)", "spectrum (any cycle length?)", "month of year", "swings (zig-zag)"], summary_rows, cls="txt") + "</div>",
          "<h2>The data</h2><div class='card'>" + html_fig(figs["ratios"], first=True) + "</div>",
          "<div class='card'>" + html_fig(figs["indices"]) + "<details><summary>Table view</summary>" + tbl(["index", "first week", "last week", "first close", "last close", "growth a year"], idx_rows) + "</details></div>",
          "<h2>The chosen pair</h2><p class='note'>Pick the pair at the top; every chart below follows it. Grey ranges are the middle 90% of the random walks.</p>",
@@ -404,14 +499,24 @@ def main():
          "<div class='card'>" + html_fig(figs["h_vr"]) + "<details><summary>Table view</summary>" + tbl(["pair"] + [wtick(k) for k in VR_K], [[nice(p)] + [(f"{v['vr']:.2f} ({fpct(v['pct'])})" if v["reportable"] else "—") for v in R[p]["vr"]] for p in ORDER]) + "</details></div>",
          "<div class='card'>" + html_fig(figs["h_spec"]) + "<details><summary>Table view</summary>" + tbl(["pair", "overall p"] + [f"{lo}–{hi} wk" for lo, hi in BANDS], [[nice(p), f"{R[p]['spec']['p_global']:.3f}"] + [(f"{b['ratio']:.2f} ({fpct(b['pct'])})" if b["bins"] else "—") for b in R[p]["spec"]["bands"]] for p in ORDER]) + "</details></div>",
          "<div class='card'>" + html_fig(figs["h_season"]) + "<details><summary>Table view</summary>" + tbl(["pair", "p"] + list(MONTHS), [[nice(p), f"{R[p]['season']['p']:.3f}" if R[p]["season"]["reportable"] else "too short"] + [(f"{m['mean'] * 100:+.1f}% ({fpct(m['pct'])})" if R[p]["season"]["reportable"] else f"{m['mean'] * 100:+.1f}%") for m in R[p]["season"]["months"]] for p in ORDER]) + "</details></div>",
+         "<h2>Does the drift removal matter?</h2><p class='note'>Both versions below use only past data.</p>",
+         "<div class='card'><p style='margin:4px 0'><b>A</b> = this page: at each week the drift removed is the average of the weekly changes before it (expanding window). "
+         "<b>B</b> = no drift removal at all: the real ratio's raw weekly changes, against the same random walks with that expanding drift added back. "
+         f"Percentiles A → B; <b>bold</b> = the notable call changes. <b>{n_flip} of {n_dc}</b> statistics change their notable call ({by_check})" + (": " + "; ".join(flipped) if flipped else "") + ". "
+         "The month-of-year check never removes a drift. "
+         + (f"Where A and B disagree ({', '.join(nice(q) for q in flip_pairs)}), neither reading is reliable: a point-in-time drift starts from the warm-up year, and where that year was very different from what followed (the Micro250 pairs' warm-up is 2022) removing it leaves a slow trend in the residuals that pushes A towards 'continues', while adding it to the random walks pushes B the other way. " if flip_pairs else "")
+         + "If anything here became a trading rule it would be tested on its own, pre-registered, with counted look-ahead checks; the turning points are confirmed only after the ratio has already reversed, so they cannot be traded as drawn.</p>"
+         + tbl(["pair", "drift a year (description)"] + [f"VR {wtick(k)}" for k in VR_K] + ["swings", "median length", "regularity", "spectrum bands changed", "spectrum overall p"],
+               [[nice(p), f"{(np.exp(R[p]['drift_wk'] * 52.18) - 1) * 100:+.1f}%"] + [(ab_html(a["pct"], b["pct"]) if a["reportable"] else "—") for a, b in zip(R[p]["vr"], R[p]["vr_raw"])]
+                + [ab_html(R[p]["swing"][k], R[p]["swing_raw"][k]) for k, _ in SW_LAB] + [spec_changed(p), f"{R[p]['spec']['p_global']:.2f}&nbsp;→&nbsp;{R[p]['spec_raw']['p_global']:.2f}"] for p in ORDER]) + "</div>",
          "<h2>Method and limits</h2><div class='card'><ul>"
-         f"<li><b>Series.</b> r_t = P_a ÷ P_b on the last trading day of each ISO week; weekly change ln(r_t ÷ r_t−1), which is the plain ratio's week-on-week change, the same whether the ratio is drawn plain or logged; the average weekly change (the long-run drift) is removed before every statistic.</li>"
-         f"<li><b>Random walks.</b> {D:,} per pair: each week's change keeps its size and gets a random sign (seed default_rng([{SEED_SIGNS}, pair_id])). Keeps volatility and its clustering; removes momentum, reversion and cycles. Percentile = (paths below + ½ ties) ÷ paths.</li>"
+         f"<li><b>Series.</b> r_t = P_a ÷ P_b on the last trading day of each ISO week; weekly change g_t = ln(r_t ÷ r_t−1), which is the plain ratio's week-on-week change, the same whether the ratio is drawn plain or logged. The residual at week t is g_t minus the average of g over all earlier weeks (expanding); the first {BURN} weeks are a warm-up for that average and are not themselves analysed (the ratio charts still show them).</li>"
+         f"<li><b>Random walks.</b> {D:,} per pair: each week's residual keeps its size and gets a random sign (seed default_rng([{SEED_SIGNS}, pair_id])); no demeaning. Keeps volatility and its clustering; removes momentum, reversion and cycles. Percentile = (paths below + ½ ties) ÷ paths.</li>"
          f"<li><b>Spectrum.</b> Periodogram of the weekly changes; power summed in cycle-length bands as a share of variance; lengths over weeks ÷ {MIN_CYCLES} are left out. The overall p uses the largest |log(power ÷ random-walk median)| across bands, so eight bands are one test. The curve averages the power over a ±12% window of cycle length (the same on every random path), for display only. No moving-average detrending anywhere: smoothing a random walk manufactures cycles about as long as the window (Slutsky–Yule).</li>"
          f"<li><b>Variance ratio.</b> VR(k) = variance of overlapping k-week changes ÷ (k × variance of weekly changes), k ≤ weeks ÷ {MIN_K_FRAC}.</li>"
          f"<li><b>Month of year.</b> Month-end to month-end changes; null = the months shuffled within each year (seed default_rng([{SEED_MONTHS}, pair_id])); tested only with ≥ {MIN_YEARS_MONTH} years in every month. The last month of every window ends 2026-08-28.</li>"
-         f"<li><b>Swings.</b> Zig-zag on the drift-removed ratio: a turning point is confirmed by a reversal of sd(weekly change) × √{H_WEEKS} (one typical half-year move) from the last extreme; the same threshold on every random path.</li>"
-         "<li><b>Limits.</b> 20 years hold only a few repetitions of a multi-year cycle; the Micro250 pairs cover 2022–2026 and the gold pairs 2015–2026; the gold leg is a futures continuation with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); price indices without dividends. The design was written before the run: explore/E01_ratio_cycles/E01.md.</li></ul></div>",
+         f"<li><b>Swings.</b> Zig-zag on the drift-removed ratio: at week t a turning point is confirmed by a reversal of h_t = sd(weekly changes before t) × √{H_WEEKS} (one typical half-year move, known at t) from the last extreme; the same threshold path on every random walk. In plain per cent a trough needs a rise of e^h − 1 and a peak a fall of 1 − e^−h (the same distance in log terms).</li>"
+         f"<li><b>Limits.</b> 20 years hold only a few repetitions of a multi-year cycle; the {BURN}-week warm-up leaves the Micro250 pairs about 3½ years (2023–2026) and the gold pairs about 10½; the gold leg is a futures continuation with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); price indices without dividends. The design was written before the first run (explore/E01_ratio_cycles/E01.md); the switch to expanding estimates came after it and is recorded there.</li></ul></div>",
          "</main>", "<script>" + JS.replace("__DIV_LIGHT__", json.dumps(DIV_LIGHT)).replace("__DIV_DARK__", json.dumps(DIV_DARK)) + "</script></body></html>"]
     out = os.path.join(OUT, "E01_cycles.html"); open(out, "w", encoding="utf-8").write("\n".join(H))
     print(f"done in {time.time() - t0:.0f}s; notable {n_not} of {n_all} (≈{0.1 * n_all:.0f} by chance) → {out}")

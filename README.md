@@ -38,7 +38,9 @@ tests/T02/   PLAN.md, T02.md (§1–3 DRAFT), TRACKER.md, run.sh, check_prereg.p
 tests/       check_names.py (hygiene: no person's name; names from WM_REDACT_NAMES in the git-ignored .env)
 explore/     EXPLORATORY studies — description, never findings, never quoted as evidence for a rule:
              E01_ratio_cycles/ (E01.md design; cycles.py → out/E01_cycles.html, E01_results.md, CSVs) — cyclicality of
-             the ten ratio series against sign-flipped random walks (2026-11-13); disclosed in T02.md §2
+             the ten ratio series against sign-flipped random walks, point-in-time (expanding drift and threshold, counted
+             look-ahead check) (2026-11-13); disclosed in T02.md §2. peaks_troughs_xlsx.py → out/E01_peaks_troughs_explained.xlsx:
+             the peak/trough rule as live Excel formulas (toy example + N100 ÷ SC100), matched against cycles.py
 ```
 
 **Result of T01 (run `headline`, 2026-11-12):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 (4 needed). The ±1 sd first-touch
