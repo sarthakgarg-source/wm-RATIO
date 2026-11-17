@@ -142,6 +142,8 @@ def load_trades(test):
 
 def trade_rows(test, px, series, zall, mkt):
     x, dec, _ = load_trades(test); rows = []; n_open = int(x["open"].sum())
+    opened = [{"test": test, "pair": t["pair"], "entry_trade": t["entry_trade"].date().isoformat(), "held_leg": t["pair"].split("|")[0 if t["held"] == "A" else 1],
+               "days_open": int((series[t["pair"]][0].index[-1] - t["entry_trade"]).days), "to": series[t["pair"]][0].index[-1].date().isoformat()} for _, t in x[x["open"]].iterrows()]
     for _, tr in x[~x["open"]].iterrows():
         pair = tr["pair"]; wk, c, ra, rb, lr = series[pair]; ed, et, xt = tr["entry_decision"], tr["entry_trade"], tr["exit_trade"]
         A = tr["held"] == "A"; la, lb = pair.split("|"); held_leg, peer_leg = (la, lb) if A else (lb, la)
@@ -153,7 +155,7 @@ def trade_rows(test, px, series, zall, mkt):
         idx = wk.index[(wk.index > ed) & (wk.index < xt)]
         rows.append({"test": test, "pair": pair, "pool": "gold" if GOLD in pair else "index", "entry_decision": ed.date().isoformat(), "entry_trade": et.date().isoformat(), "exit_trade": xt.date().isoformat(),
                      "held": tr["held"], "held_leg": held_leg, "peer_leg": peer_leg, "extra": float(tr["extra"]), "held_ret": float(tr["held_ret"]), "peer_ret": float(tr["peer_ret"]), "good": bool(tr["extra"] > 0),
-                     "weeks_held": int(len(dd)), "exit_reason": "mean" if "back at the mean" in reason else ("cap" if "max hold" in reason else "other"), "month": int(ed.month),
+                     "weeks_held": int(len(dd)), "days_held": int((xt - et).days), "exit_reason": "mean" if "back at the mean" in reason else ("cap" if "max hold" in reason else "other"), "month": int(ed.month),
                      "corr26": float(cc["corr26"]), "corr52": float(cc["corr52"]), "mkt52": float(mkt.asof(ed) / mkt.asof(ed - pd.Timedelta(days=364)) - 1), "mkt_dd": float(mkt.asof(ed) / mkt[:ed].max() - 1),
                      "vol_held": float(cc["vol_a"] if A else cc["vol_b"]), "vol_peer": float(cc["vol_b"] if A else cc["vol_a"]), "vol_ratio": float(cc["vol_ratio"]), "band_width": float(cc["band_width"]),
                      "z_entry": z, "z_depth": abs(z), "since_zero": float(cc["since_zero"]),
@@ -162,7 +164,7 @@ def trade_rows(test, px, series, zall, mkt):
                      "mkt_during": float(mkt.asof(xt) / mkt.asof(et) - 1),
                      "corr_during": float(ra[idx].corr(rb[idx])) if len(idx) >= MIN_DURING else float("nan"),
                      "vol_ratio_during": float(lr[idx].std() * np.sqrt(52)) if len(idx) >= MIN_DURING else float("nan")})
-    return rows, n_open
+    return rows, n_open, opened
 
 
 def assoc(df, rng, P):
@@ -217,10 +219,21 @@ def main():
         sys.exit("look-ahead check FAILED: " + "; ".join(PIT[1]) if PIT[1] else "look-ahead check ran nothing")
     print(f"  B look-ahead check: {PIT[0]} checks, 0 violations")
     mkt = px[MARKET]["close"].astype(float)
-    trades, n_open = [], {}
+    trades, n_open, opened = [], {}, []
     for test in TESTS:
-        r, n_open[test] = trade_rows(test, px, series, zall, mkt); trades += r
+        r, n_open[test], o = trade_rows(test, px, series, zall, mkt); trades += r; opened += o
     TR = pd.DataFrame(trades); TR.to_csv(os.path.join(OUT, "trades_conditions.csv"), index=False)
+    OP = pd.DataFrame(opened, columns=["test", "pair", "entry_trade", "held_leg", "days_open", "to"])
+    # trade lengths per test and pair: calendar days from the entry fill to the exit fill (closed trades); open ones separately
+    DUR = []
+    for test in TESTS:
+        for p in ORDER:
+            s_ = TR[(TR["test"] == test) & (TR["pair"] == p)]; o_ = OP[(OP["test"] == test) & (OP["pair"] == p)]; wk = series[p][0]
+            DUR.append({"test": test, "pair": p, "first": wk.index[0].date().isoformat(), "last": wk.index[-1].date().isoformat(), "closed": len(s_), "open": len(o_),
+                        "median_days": float(s_["days_held"].median()) if len(s_) else np.nan, "mean_days": float(s_["days_held"].mean()) if len(s_) else np.nan,
+                        "longest_days": int(s_["days_held"].max()) if len(s_) else 0, "capped": int((s_["exit_reason"] == "cap").sum()),
+                        "per_year": len(s_) / ((wk.index[-1] - wk.index[0]).days / 365.25), "open_days": int(o_["days_open"].max()) if len(o_) else 0})
+    DUR = pd.DataFrame(DUR); DUR.to_csv(os.path.join(OUT, "trade_durations.csv"), index=False)
     key = lambda df: set(zip(df["pair"], df["entry_decision"], df["held"]))                                       # noqa: E731
     k1, k2 = key(TR[TR["test"] == "T01"]), key(TR[TR["test"] == "T02"])
     overlap = {"T02_trades": len(k2), "T01_trades": len(k1), "shared": len(k1 & k2), "share_of_T02_in_T01": len(k1 & k2) / max(len(k2), 1)}
@@ -266,10 +279,13 @@ def main():
     md += [f"| {r['test']} | {r['pool']} | {r['exit_reason']} | {r['n']} | {r['good'] * 100:.0f}% | {E1.fp(r['median_extra'])} | {E1.fp(r['mean_extra'])} | {r['weeks']:.0f} |" for _, r in by_exit.iterrows()]
     md += ["\n## Trades per pair\n", "| test | pair | closed trades | share good | median extra | mean extra | median weeks held |", "|---|---|---|---|---|---|---|"]
     md += [f"| {r['test']} | {nice(r['pair'])} | {r['n']} | {r['good'] * 100:.0f}% | {E1.fp(r['median_extra'])} | {E1.fp(r['mean_extra'])} | {r['weeks']:.0f} |" for _, r in PP.iterrows()]
+    md += ["\n## Trade lengths (calendar days from the entry fill to the exit fill)\n", "| test | pair | data window | closed trades | trades a year | median days | mean days | longest | ran to the 26-week cap | open at the end (days so far) |", "|---|---|---|---|---|---|---|---|---|---|"]
+    def open_txt(r): return f"{r['open']} ({r['open_days']})" if r["open"] else "0"
+    md += [f"| {r['test']} | {nice(r['pair'])} | {r['first']} → {r['last']} | {r['closed']} | {r['per_year']:.1f} | {E1.f2(r['median_days'], 0)} | {E1.f2(r['mean_days'], 0)} | {r['longest_days']} | {r['capped']} | {open_txt(r)} |" for _, r in DUR.iterrows()]
     open(os.path.join(OUT, "E03_results.md"), "w", encoding="utf-8").write("\n".join(md) + "\n")
 
     # ---------------------------------------------------------------- figures
-    figs = {}; titles = {"prof": {}, "tl": {}}
+    figs = {}; titles = {"prof": {}, "tl": {}, "days": {}}
     # A1. per pair: mean forward return by bucket, three horizons
     fA = make_subplots(rows=3, cols=1, shared_xaxes=False, vertical_spacing=0.09, subplot_titles=[f"{k} weeks ahead" for k in HORIZONS])
     for p in ORDER:
@@ -332,6 +348,31 @@ def main():
     for i in range(2):
         fT.update_yaxes(type="log", title={"text": "rebased", "font": {"color": INK2}}, row=i + 1, col=1)
     figs["tl"] = E1.style(fT, titles["tl"][DEFAULT_PAIR], 720, legend_top=True)
+    # B1b. per pair: each T02 trade's length in days, as a stem at its entry date, and the trades entered each year
+    DAY_MS = 86400000; titles["days"] = {}
+    fD = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.72, 0.28], vertical_spacing=0.08,
+                       subplot_titles=("calendar days held, at the trade's entry date (label = days)", "trades entered each year (an open trade counts in its entry year)"))
+    for p in ORDER:
+        vis = p == DEFAULT_PAIR; wk = series[p][0]; sub = TR[(TR["test"] == "T02") & (TR["pair"] == p)].sort_values("entry_trade"); op = OP[(OP["test"] == "T02") & (OP["pair"] == p)]
+        for good, colr, lab in ((True, AQUA, "good trade (extra > 0)"), (False, ORANGE, "bad trade")):
+            tt = sub[sub["good"] == good]
+            fD.add_trace(go.Bar(x=pd.to_datetime(tt["entry_trade"]), y=tt["days_held"], width=5 * DAY_MS, marker={"color": colr, "line": {"width": 0}}, text=tt["days_held"], textposition="outside", textangle=0, textfont={"size": 10}, constraintext="none",
+                                cliponaxis=False, name=lab, legendgroup=lab, meta=p, visible=vis,
+                                customdata=[[a, b, w, e, x * 100] for a, b, w, e, x in zip(tt["entry_trade"], tt["exit_trade"], tt["weeks_held"], tt["exit_reason"], tt["extra"])],
+                                hovertemplate="%{customdata[0]} → %{customdata[1]}: %{y} days (%{customdata[2]} decision weeks)<br>exit: %{customdata[3]} · extra %{customdata[4]:+.1f}%<extra></extra>"), row=1, col=1)
+        if len(op):
+            fD.add_trace(go.Bar(x=pd.to_datetime(op["entry_trade"]), y=op["days_open"], width=5 * DAY_MS, marker={"color": MUTED}, text=[f"{d} (open)" for d in op["days_open"]], textposition="outside", textangle=0, textfont={"size": 10}, constraintext="none",
+                                cliponaxis=False, name="still open at the end", legendgroup="open", meta=p, visible=vis, customdata=[[a, t_] for a, t_ in zip(op["entry_trade"], op["to"])],
+                                hovertemplate="%{customdata[0]} → still open on %{customdata[1]}: %{y} days so far<extra></extra>"), row=1, col=1)
+        years = range(wk.index[0].year, wk.index[-1].year + 1); cnt = pd.to_datetime(pd.concat([sub["entry_trade"], op["entry_trade"]])).dt.year.value_counts().reindex(years, fill_value=0)   # open trades included
+        fD.add_trace(go.Bar(x=pd.to_datetime([f"{y}-07-01" for y in years]), y=cnt.to_numpy(), width=300 * DAY_MS, marker={"color": BLUE}, text=cnt.to_numpy(), textposition="outside", textfont={"size": 10}, cliponaxis=False,
+                            name="trades entered that year", legendgroup="yr", meta=p, visible=vis, hovertemplate="%{x|%Y}: %{y} trades entered<extra></extra>"), row=2, col=1)
+        d_ = DUR[(DUR["test"] == "T02") & (DUR["pair"] == p)].iloc[0]; open_s = f" + {d_['open']} open" if d_["open"] else ""
+        titles["days"][p] = E1.two_line(f"{nice(p)} · T02 · {d_['closed']} closed trades{open_s} · data {d_['first']} → {d_['last']} · {d_['per_year']:.1f} trades a year · median {E1.f2(d_['median_days'], 0)} days, longest {d_['longest_days']}",
+                                        f"each stem is one trade at its entry date, its height and label the calendar days from entry to exit; aqua = the held leg beat the peer, orange = it did not; {d_['capped']} ran to the 26-week cap (about 182 days)")
+    fD.update_yaxes(title={"text": "days held", "font": {"color": INK2}}, rangemode="tozero", row=1, col=1); fD.update_yaxes(title={"text": "trades", "font": {"color": INK2}}, rangemode="tozero", row=2, col=1)
+    fD.add_hline(y=182, line={"color": AXIS, "width": 1, "dash": "dot"}, row=1, col=1)
+    fD.update_layout(bargap=0, barmode="overlay"); figs["days"] = E1.style(fD, titles["days"][DEFAULT_PAIR], 640, legend_top=True)
     # B2. conditions heat map: rows conditions, columns (test, pool) x statistic
     ccols = [f"{t} {pl}<br>{st}" for t, pl in POOLS for st in ("good − bad", "rank corr")]
     zv, tx, hv = [], [], []
@@ -371,6 +412,10 @@ def main():
     tab_prof = {p: E1.tbl(["horizon", "z bucket", "weeks (episodes)", "cheaper: mean / median", "richer: mean / median", "spread: mean (random walks, pct)", "spread: median (pct)", "both legs: mean"],
                           [[f"{r['horizon']} wk", r["bucket"], f"{r['weeks']} ({r['episodes']})", f"{E1.fp(r['cheap_mean'])} / {E1.fp(r['cheap_median'])}", f"{E1.fp(r['rich_mean'])} / {E1.fp(r['rich_median'])}",
                             f"{E1.fp(r['spread_mean'])} ({E1.fp(r['spread_mean_rw'])}, {E1.fpct(r['spread_mean_pct'])})", f"{E1.fp(r['spread_median'])} ({E1.fpct(r['spread_median_pct'])})", E1.fp(r["both_mean"])] for _, r in PR[PR["pair"] == p].iterrows()]) for p in ORDER}
+    dur_rows = [[r["test"], nice(r["pair"]), f"{r['first']} → {r['last']}", r["closed"], f"{r['per_year']:.1f}", E1.f2(r["median_days"], 0), E1.f2(r["mean_days"], 0), r["longest_days"], r["capped"], (f"{r['open']} ({r['open_days']} days so far)" if r["open"] else "0")] for _, r in DUR.iterrows()]
+    dur_tbl = E1.tbl(["test", "pair", "data window", "closed trades", "trades a year", "median days", "mean days", "longest", "ran to the 26-week cap", "open at the end"], dur_rows)
+    tab_days = {p: E1.tbl(["entered", "exited", "days", "decision weeks", "exit", "extra"], [[t["entry_trade"], t["exit_trade"], t["days_held"], t["weeks_held"], t["exit_reason"], E1.fp(t["extra"])]
+                                                                                          for _, t in TR[(TR["test"] == "T02") & (TR["pair"] == p)].sort_values("entry_trade").iterrows()]) + "<p class='note'>All pairs, both tests:</p>" + dur_tbl for p in ORDER}
     tab_tl = {p: E1.tbl(["test", "entered", "exited", "held", "weeks", "exit", "extra", "held leg", "peer", "z at entry", "corr 52 wk", "N100 52-wk", "N100 drawdown", "band width", "breadth"],
                         [[t["test"], t["entry_trade"], t["exit_trade"], t["held_leg"], t["weeks_held"], t["exit_reason"], E1.fp(t["extra"]), E1.fp(t["held_ret"]), E1.fp(t["peer_ret"]), f"{t['z_entry']:+.2f}", E1.f2(t["corr52"]), E1.fp(t["mkt52"]), E1.fp(t["mkt_dd"]), fmtv("pct", t["band_width"]), fmtv("pct", t["breadth"])]
                          for _, t in TR[TR["pair"] == p].sort_values(["test", "entry_trade"]).iterrows()]) for p in ORDER}
@@ -401,6 +446,8 @@ def main():
          "<div class='card'>" + E1.html_fig(figs["h_prof"]) + "</div>",
          "<h2>B · The market's condition at each trade</h2><p class='note'>The trades of both tests on the chosen pair, over the two legs. Hover a marker for the trade's outcome and the market at its entry.</p>",
          per_pair("tl", figs["tl"], tab_tl),
+         "<h3>How many trades, and how long each one lasted</h3><p class='note'>T02's trades on the chosen pair (T01's are the same trades in 95% of cases). The dotted line is the 26-week cap (182 days). A stem above it is a trade that hit the cap and re-entered the same leg the same week: no trade happens then, so the sleeve's hold is one piece. The table under the chart has every pair and both tests.</p>",
+         per_pair("days", figs["days"], tab_days),
          "<h3>Which conditions go with good trades?</h3>"
          f"<div class='card'><p style='margin:4px 0'><b>T02, index pairs:</b> {words('T02', 'index')}. <b>T01, index pairs:</b> {words('T01', 'index')}. <b>Gold pairs</b> (T02): {words('T02', 'gold')}.</p></div>",
          "<div class='card'>" + E1.html_fig(figs["h_cond"]) + "<details><summary>Table view</summary>" + "".join(cond_table(t, pl) for t, pl in POOLS) + "</details></div>",
