@@ -55,6 +55,25 @@
    "engine": "(ratio - mean) / sd from analysis.ratio_engine.decide(plain, window 52); only those columns read"
   }
  },
+ "z_windows": {
+  "windows": [
+   "w52",
+   "w26",
+   "w13",
+   "d250",
+   "d120",
+   "d60",
+   "d20"
+  ],
+  "daily_seed": "default_rng([111, pair_id])",
+  "daily_warm_up_days": 250,
+  "checks": {
+   "weekly_running_sums_max_abs_diff": 6.695513032894951e-10,
+   "daily_running_sums_max_abs_diff": 3.79444586862121e-08,
+   "pit_checks": 720,
+   "pit_violations": []
+  }
+ },
  "bands_weeks": [
   [
    2,
@@ -126,5 +145,5 @@
    "Micro250 \u00f7 GoldMCX VR 26 wk (95.0 \u2192 93.7)"
   ]
  },
- "seconds": 11
+ "seconds": 59
 }

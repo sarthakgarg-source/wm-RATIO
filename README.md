@@ -51,6 +51,8 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              E04_signal_strength/ (E04.md design; strength.py → out/E04_signal.html, E04_results.md, CSVs) — T03's
              outperformance against 50/50, what follows a band touch, the z-score's information coefficient, and the T03
              rule run on E01's random walks: signal or mechanics? (2026-11-17)
+             E01, E03 and E04 have a z window dropdown: 13 / 26 / 52 weeks (weekly closes) and 20 / 60 / 120 / 250 trading days
+             (daily closes, daily random walks); shared code explore/E01_ratio_cycles/zwin.py (2026-11-17)
 ```
 
 **Results (run `headline`, 2026-11-17):** the rule is **REFUTED** at the MDE (2.8–12.1 pp/yr). T02 at the 95th percentile:

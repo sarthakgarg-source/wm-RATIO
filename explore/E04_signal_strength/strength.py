@@ -28,10 +28,13 @@ sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_
 from analysis.approved_data import GOLD, fingerprints, load_daily  # noqa: E402
 from analysis.ratio_engine import INDEX_PAIRS, PAIRS, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (E01's random paths, z-score, percentiles and the page's styling)
+import zwin as ZW  # noqa: E402  (the z windows: weekly 13 / 26 / 52, daily 20 / 60 / 120 / 250, and the daily random paths)
 
 TEST, RUN, WIN, EXIT, COST = "T03", "headline", 52, "E1", 20.8
 EV = os.path.join(ROOT, "tests", TEST, "evidence", RUN)
 K_MAX = 52; IC_H = (1, 4, 13, 26, 52); EVENT_SHOW = (4, 13, 26, 52)
+K_D = (1,) + tuple(range(5, 251, 5)); IC_D = (1, 5, 20, 65, 130, 250)      # daily windows: horizons in trading days (5 = a week)
+DAILY = tuple(w for w, _, f, _ in ZW.WINDOWS if f == "D")
 ORDER = E1.ORDER; nice = E1.nice; DEFAULT_PAIR = E1.DEFAULT_PAIR; LO, HI = E1.LO, E1.HI
 BLUE, ORANGE, AQUA, MUTED, INK2, AXIS, NULL_FILL = E1.BLUE, E1.ORANGE, E1.AQUA, E1.MUTED, E1.INK2, E1.AXIS, E1.NULL_FILL
 STATS = (("n", "trades", "num"), ("hit", "hit rate", "pct"), ("mean", "mean relative return", "pct"), ("median", "median relative return", "pct"),
@@ -106,6 +109,25 @@ def spearman_rows(x, y):
     return (rx * ry).sum(axis=1) / np.sqrt((rx * rx).sum(axis=1) * (ry * ry).sum(axis=1))
 
 
+def ev_ic(P, Z, burn, kgrid, hgrid):
+    """Sections 2 and 3 on a block of paths: per row the summed relative return after each first touch at every k, the
+    number of touches, and the Spearman IC of -z with the forward relative return at every h (from the warm-up's end)."""
+    L = P.shape[1]; kmax = max(kgrid)
+    sig = first_touches(positions(Z)); okc = np.zeros(L, bool); okc[burn: L - kmax] = True
+    S_ = np.where(okc[None, :], sig, 0.0); cnt = np.abs(S_).sum(axis=1)
+    ev = np.stack([(S_[:, :L - k] * (P[:, k:] - P[:, :-k])).sum(axis=1) for k in kgrid], axis=1)
+    ic = np.stack([spearman_rows(-Z[:, burn:L - h], P[:, burn + h:] - P[:, burn:L - h]) for h in hgrid], axis=1)
+    return ev, cnt, ic
+
+
+def ic_halves(p, z, burn, hgrid):
+    out = []
+    for h in hgrid:
+        x = -z[None, burn:len(p) - h]; y = (p[burn + h:] - p[burn:len(p) - h])[None, :]; half = x.shape[1] // 2
+        out.append((float(spearman_rows(x[:, :half], y[:, :half])[0]), float(spearman_rows(x[:, half:], y[:, half:])[0])))
+    return out
+
+
 # ------------------------------------------------------------------------------------------------------- the run
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--draws", type=int, default=2000); D = ap.parse_args().draws
@@ -115,7 +137,7 @@ def main():
     extras = pd.read_csv(os.path.join(EV, "trade_extras.csv"), parse_dates=["entry_decision"]); extras = extras[(extras["window"] == WIN) & (extras["exit"] == EXIT)]
     summ = pd.read_csv(os.path.join(EV, "summary.csv"))
     trs = pd.read_csv(os.path.join(EV, "trades.csv"), parse_dates=["decision_date", "trade_date"]); trs = trs[(trs["window"] == WIN) & (trs["exit"] == EXIT)]
-    R = {}; checks = {"z_max_abs_diff": 0.0, "rule_mismatch": [], "rule_trades_matched": 0}
+    R = {}; checks = {"z_max_abs_diff": 0.0, "rule_mismatch": [], "rule_trades_matched": 0, "zwin_daily_max_abs_diff": 0.0}
     for pid, pair in enumerate(PAIRS):
         dates, P, Z, chk = paths_for(pair, pid, px, D); checks["z_max_abs_diff"] = max(checks["z_max_abs_diff"], chk); L = P.shape[1]
         # ---- 4. the rule on every row; row 0 must give T03's trades exactly
@@ -151,10 +173,28 @@ def main():
             ic[k] = spearman_rows(x, y)
             half = (L - k - E1.BURN) // 2
             ic[f"{k}_h1"] = float(spearman_rows(x[:1, :half], y[:1, :half])[0]); ic[f"{k}_h2"] = float(spearman_rows(x[:1, half:], y[:1, half:])[0])
+        # ---- the other z windows (sections 2 and 3): weekly on the same paths, daily on the daily paths in chunks
+        WR = {"w52": {"freq": "W", "ev": ev_sum, "cnt": cnt, "ic": np.stack([ic[k] for k in IC_H], axis=1), "halves": [(ic[f"{k}_h1"], ic[f"{k}_h2"]) for k in IC_H],
+                      "first": dates[E1.BURN].date().isoformat(), "last": dates[-1].date().isoformat()}}
+        for w in ("w26", "w13"):
+            Zw = ZW.trailing_z(np.exp(P), ZW.WIN[w][3]); e_, c_, i_ = ev_ic(P, Zw, E1.BURN, range(1, K_MAX + 1), IC_H)
+            WR[w] = {"freq": "W", "ev": e_, "cnt": c_, "ic": i_, "halves": ic_halves(P[0], Zw[0], E1.BURN, IC_H), "first": dates[E1.BURN].date().isoformat(), "last": dates[-1].date().isoformat()}
+        dser = ZW.series(pair_frame(px, pair, "plain"), "D"); lnd = np.log(dser["ratio"].to_numpy()); bd = ZW.BURN["D"]; acc = {}
+        for w in DAILY:
+            n_ = ZW.WIN[w][3]; zr = ZW.trailing_z(np.exp(lnd[None, :]), n_)
+            checks["zwin_daily_max_abs_diff"] = max(checks["zwin_daily_max_abs_diff"], float(np.nanmax(np.abs(zr[0] - ZW.z_of(dser["ratio"], n_).to_numpy()))))
+            e_, c_, i_ = ev_ic(lnd[None, :], zr, bd, K_D, IC_D); acc[w] = ([e_], [c_], [i_], ic_halves(lnd, zr[0], bd, IC_D))
+        for _, Pc in ZW.random_log_paths(lnd, pid, "D", D):
+            Ec = np.exp(Pc)
+            for w in DAILY:
+                e_, c_, i_ = ev_ic(Pc, ZW.trailing_z(Ec, ZW.WIN[w][3]), bd, K_D, IC_D); acc[w][0].append(e_); acc[w][1].append(c_); acc[w][2].append(i_)
+        for w in DAILY:
+            WR[w] = {"freq": "D", "ev": np.concatenate(acc[w][0]), "cnt": np.concatenate(acc[w][1]), "ic": np.concatenate(acc[w][2]), "halves": acc[w][3],
+                     "first": dser.index[bd].date().isoformat(), "last": dser.index[-1].date().isoformat()}
         R[pair] = {"pid": pid, "dates": dates, "first": dates[E1.BURN].date().isoformat(), "last": dates[-1].date().isoformat(), "rule": stats_rows, "trade_rows": keep, "trade_ret": ret, "trade_wks": wks,
-                   "corr_fill": corr_fill, "n_fill_matched": len(ex), "ev_sum": ev_sum, "ev_cnt": cnt, "ic": ic}
+                   "corr_fill": corr_fill, "n_fill_matched": len(ex), "ev_sum": ev_sum, "ev_cnt": cnt, "ic": ic, "win": WR}
         print(f"  {pair:18s} touches {int(cnt[0]):3d}  trades {stats_rows[0]['n']:3d}  [{time.time() - t0:4.0f}s]", flush=True)
-    if checks["z_max_abs_diff"] > 1e-9 or checks["rule_mismatch"]:
+    if checks["z_max_abs_diff"] > 1e-9 or checks["rule_mismatch"] or checks["zwin_daily_max_abs_diff"] > 1e-6:   # daily running sums over ~5,000 days: float error ~1e-8
         sys.exit(f"E04 check FAILED (the paths' z or the rule copy does not match): {checks}")
     print(f"  checks: z {checks['z_max_abs_diff']:.1e}; the rule copy reproduces all {checks['rule_trades_matched']} T03 entries")
 
@@ -222,6 +262,31 @@ def main():
                         "ic_first_half": float(np.mean([R[p]["ic"][f"{k}_h1"] for p in INDEX_PAIRS])), "ic_second_half": float(np.mean([R[p]["ic"][f"{k}_h2"] for p in INDEX_PAIRS]))})
     ICS = pd.DataFrame(ic_rows); ICS.to_csv(os.path.join(OUT, "ic.csv"), index=False)
 
+    # ---------------------------------------------------------------- 2 and 3 for every z window
+    kgrid = lambda f: tuple(range(1, K_MAX + 1)) if f == "W" else K_D                  # noqa: E731
+    hgrid = lambda f: IC_H if f == "W" else IC_D                                      # noqa: E731
+    xwk = lambda f, k: float(k) if f == "W" else k / 5.0                              # noqa: E731  (in weeks: 5 trading days a week)
+    evw_rows, icw_rows = [], []
+    for w, lab, f, n_ in ZW.WINDOWS:
+        for key in ORDER + ["index"]:
+            if key == "index":
+                sums = sum(R[p]["win"][w]["ev"] for p in INDEX_PAIRS); cnts = sum(R[p]["win"][w]["cnt"] for p in INDEX_PAIRS); icm = np.mean([R[p]["win"][w]["ic"] for p in INDEX_PAIRS], axis=0)
+                halves = [tuple(np.mean([R[p]["win"][w]["halves"][j] for p in INDEX_PAIRS], axis=0)) for j in range(len(hgrid(f)))]
+                first, last = min(R[p]["win"][w]["first"] for p in INDEX_PAIRS), max(R[p]["win"][w]["last"] for p in INDEX_PAIRS)
+            else:
+                ww = R[key]["win"][w]; sums, cnts, icm, halves, first, last = ww["ev"], ww["cnt"], ww["ic"], ww["halves"], ww["first"], ww["last"]
+            means = sums / np.maximum(cnts, 1)[:, None]; real = means[0]; null = means[1:]
+            for j, k in enumerate(kgrid(f)):
+                evw_rows.append({"window": w, "pair": key, "k": k, "x_weeks": xwk(f, k), "touches": int(cnts[0]), "first": first, "last": last, "real": float(real[j]), "rw_p5": float(np.percentile(null[:, j], 5)),
+                                 "rw_median": float(np.median(null[:, j])), "rw_p95": float(np.percentile(null[:, j], 95)), "pct": E1.pctile(real[j], null[:, j])})
+            for j, h in enumerate(hgrid(f)):
+                icw_rows.append({"window": w, "pair": key, "h": h, "x_weeks": xwk(f, h), "ic": float(icm[0, j]), "rw_p5": float(np.percentile(icm[1:, j], 5)), "rw_median": float(np.median(icm[1:, j])),
+                                 "rw_p95": float(np.percentile(icm[1:, j], 95)), "pct": E1.pctile(icm[0, j], icm[1:, j]), "ic_first_half": halves[j][0], "ic_second_half": halves[j][1], "first": first, "last": last})
+    EVW = pd.DataFrame(evw_rows); ICW = pd.DataFrame(icw_rows); EVW.to_csv(os.path.join(OUT, "event_study_windows.csv"), index=False); ICW.to_csv(os.path.join(OUT, "ic_windows.csv"), index=False)
+    for w in ("w52",):                                                                  # the 52-week rows must be the existing ones
+        a_ = EVW[(EVW["window"] == w)].set_index(["pair", "k"])["real"]; b_ = EVS.set_index(["pair", "k"])["real"]; assert np.allclose(a_.reindex(b_.index), b_, atol=1e-12)
+    win_notable = {w: (int(sum(E1.notable(v) for v in ICW[ICW["window"] == w]["pct"])), int(ICW[ICW["window"] == w]["pct"].notna().sum())) for w, _, _, _ in ZW.WINDOWS}
+
     # ---------------------------------------------------------------- 4. the rule on random walks
     rr_rows = []
     def rr(key, rows):
@@ -240,7 +305,9 @@ def main():
     counted = ICS["pct"].tolist() + RRS["pct"].tolist(); counted = [v for v in counted if v == v]; n_not = sum(E1.notable(v) for v in counted)
     audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "test": TEST, "test_run_date": audit_t.get("run_date"), "setting": {"window": WIN, "exit": EXIT, "cost_bps": COST},
              "draws": D, "seed": f"default_rng([{E1.SEED_SIGNS}, pair_id]) (E01's signs)", "checks": checks, "notable": [n_not, len(counted)],
-             "fill_vs_close": {p: {"corr": R[p]["corr_fill"], "trades": R[p]["n_fill_matched"]} for p in ORDER}, "seconds": round(time.time() - t0)}
+             "fill_vs_close": {p: {"corr": R[p]["corr_fill"], "trades": R[p]["n_fill_matched"]} for p in ORDER},
+             "z_windows": {"windows": [w for w, _, _, _ in ZW.WINDOWS], "daily_seed": f"default_rng([{ZW.SEED['D']}, pair_id])", "daily_warm_up_days": ZW.BURN["D"], "ic_notable_by_window": win_notable,
+                           "daily_event_k_days": list(K_D), "daily_ic_h_days": list(IC_D)}, "seconds": round(time.time() - t0)}
     json.dump(audit, open(os.path.join(OUT, "audit.json"), "w", encoding="utf-8"), indent=1, default=str)
 
     # ---------------------------------------------------------------- results (markdown)
@@ -262,6 +329,15 @@ def main():
     md += ["\n## 3. Information coefficient: Spearman of −z with the forward relative return (random walks' 5th–95th, percentile; first half / second half)\n", "| pair | " + " | ".join(f"{k} wk" for k in IC_H) + " |", "|---|" + "---|" * len(IC_H)]
     for p in ["index"] + ORDER:
         md.append(f"| {'six index pairs (mean)' if p == 'index' else nice(p)} | " + " | ".join(f"{r_['ic']:+.3f} ({r_['rw_p5']:+.2f}…{r_['rw_p95']:+.2f}, {pq(r_['pct'])}; {r_['ic_first_half']:+.2f} / {r_['ic_second_half']:+.2f})" for r_ in (g(ICS, p, k=k) for k in IC_H)) + " |")
+    md += ["\n## 2–3 for every z window (pooled six index pairs; event study at about 13 and 26 weeks, IC at about 4 and 26 weeks; random walks' median, percentile)\n",
+           "Weekly windows on decision-week closes with E01's random walks; daily windows on daily closes with daily random walks (seed `default_rng([111, pair_id])`, the same construction after a 250-day warm-up). Horizons in trading days for the daily windows (65 ≈ 13 weeks, 130 ≈ 26).\n",
+           "| z window | touches | after ≈13 weeks | after ≈26 weeks | IC ≈4 weeks | IC ≈26 weeks | IC percentiles notable (all pairs and horizons) |", "|---|---|---|---|---|---|---|"]
+    for w, lab, f, n_ in ZW.WINDOWS:
+        k13, k26, h4, h26 = (13, 26, 4, 26) if f == "W" else (65, 130, 20, 130)
+        e13 = EVW[(EVW["window"] == w) & (EVW["pair"] == "index") & (EVW["k"] == k13)].iloc[0]; e26 = EVW[(EVW["window"] == w) & (EVW["pair"] == "index") & (EVW["k"] == k26)].iloc[0]
+        i4 = ICW[(ICW["window"] == w) & (ICW["pair"] == "index") & (ICW["h"] == h4)].iloc[0]; i26 = ICW[(ICW["window"] == w) & (ICW["pair"] == "index") & (ICW["h"] == h26)].iloc[0]
+        md.append(f"| {lab}{' (daily)' if f == 'D' else ''} | {int(e13['touches'])} | {e13['real'] * 100:+.2f}% ({e13['rw_median'] * 100:+.2f}%, {pq(e13['pct'])}) | {e26['real'] * 100:+.2f}% ({e26['rw_median'] * 100:+.2f}%, {pq(e26['pct'])}) | "
+                  f"{i4['ic']:+.3f} ({i4['rw_median']:+.3f}, {pq(i4['pct'])}) | {i26['ic']:+.3f} ({i26['rw_median']:+.3f}, {pq(i26['pct'])}) | {win_notable[w][0]} of {win_notable[w][1]} |")
     md += ["\n## 4. The T03 rule on the real ratio and on the random walks (trades after the warm-up; relative return close to close)\n", "| pair | " + " | ".join(lab for _, lab, _ in STATS) + " |", "|---|" + "---|" * len(STATS)]
     for p in ["index"] + ORDER:
         cells = []
@@ -279,7 +355,6 @@ def main():
     # ---------------------------------------------------------------- figures
     figs = {}; titles = {"op": {}, "ev": {}, "ic": {}, "sf": {}}
     fO = make_subplots(rows=2, cols=1, row_heights=[0.62, 0.38], vertical_spacing=0.1, subplot_titles=("strategy ÷ 50/50 bought once (above 1 = ahead)", "calendar-year return: strategy − 50/50"))
-    fE, fI = go.Figure(), go.Figure()
     for p in ORDER:
         vis = p == DEFAULT_PAIR; rel = R[p]["rel"]; ye = YE[YE["pair"] == p]; o = OPF[OPF["pair"] == p].iloc[0]
         fO.add_trace(go.Scatter(x=rel.index, y=rel, mode="lines", line={"color": BLUE, "width": 1.5}, name="strategy ÷ 50/50", meta=p, visible=vis, hovertemplate="%{x|%Y-%m-%d}: %{y:.3f}<extra></extra>"), row=1, col=1)
@@ -287,46 +362,56 @@ def main():
                             customdata=np.c_[ye["strategy"] * 100, ye["5050"] * 100], hovertemplate="%{x}: strategy %{customdata[0]:+.1f}%, 50/50 %{customdata[1]:+.1f}% → %{y:+.1f} pp<extra></extra>"), row=2, col=1)
         titles["op"][p] = E1.two_line(f"{nice(p)} · {o['first']} → {o['last']} · CAGR {o['cagr'] * 100:.1f}% vs 50/50 {o['cagr_5050'] * 100:.1f}% ({o['excess_cagr'] * 100:+.1f} pp a year) · information ratio {o['ir']:+.2f}",
                                       f"ahead in {o['years_ahead'] * 100:.0f}% of {o['n_years']} calendar years; the strategy ÷ 50/50 fell at worst {o['rel_maxdd'] * 100:.0f}% and ends at {o['rel_end']:.2f}")
-        real, lo, md_, hi, pc = EV_[p]; ks = np.arange(1, K_MAX + 1)
-        fE.add_trace(go.Scatter(x=ks, y=lo * 100, mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False, meta=p, visible=vis))
-        fE.add_trace(go.Scatter(x=ks, y=hi * 100, mode="lines", line={"width": 0}, fill="tonexty", fillcolor=NULL_FILL, name="random walks, middle 90%", hoverinfo="skip", meta=p, visible=vis))
-        fE.add_trace(go.Scatter(x=ks, y=real * 100, mode="lines+markers", line={"color": BLUE, "width": 2}, marker={"size": 4}, name="the ratio's touches", meta=p, visible=vis,
-                                customdata=np.c_[md_ * 100, pc], hovertemplate="%{x} weeks after: %{y:+.2f}% (random walks %{customdata[0]:+.2f}%, percentile %{customdata[1]:.1f})<extra></extra>"))
-        titles["ev"][p] = E1.two_line(f"{nice(p)} · {R[p]['first']} → {R[p]['last']} · {int(R[p]['ev_cnt'][0])} first touches of the band",
-                                      "mean relative return of the signalled leg against the other, k weeks after the touch (above 0 = the swing back the rule bets on)")
-        icp = ICS[ICS["pair"] == p]
-        fI.add_trace(go.Scatter(x=[str(k) for k in IC_H], y=icp["rw_p5"], mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False, meta=p, visible=vis))
-        fI.add_trace(go.Scatter(x=[str(k) for k in IC_H], y=icp["rw_p95"], mode="lines", line={"width": 0}, fill="tonexty", fillcolor=NULL_FILL, name="random walks, middle 90%", hoverinfo="skip", meta=p, visible=vis))
-        fI.add_trace(go.Scatter(x=[str(k) for k in IC_H], y=icp["ic"], mode="lines+markers", line={"color": BLUE, "width": 2}, marker={"size": 8}, name="the ratio", meta=p, visible=vis,
-                                customdata=np.c_[icp["pct"], icp["ic_first_half"], icp["ic_second_half"]], hovertemplate="%{x} weeks: IC %{y:+.3f}, percentile %{customdata[0]:.1f}<br>first half %{customdata[1]:+.3f}, second half %{customdata[2]:+.3f}<extra></extra>"))
-        titles["ic"][p] = E1.two_line(f"{nice(p)} · {R[p]['first']} → {R[p]['last']} · rank correlation of −z with the next k weeks' relative return",
-                                      "above 0 = a stretched ratio tends to come back (a below-band ratio is followed by the first leg doing better); grey = what random walks give")
+    # sections 2 and 3: one set of traces per pair and z window (meta pair§window), and per window for the pooled and all-pairs views
+    fE, fI, fEp, fH = go.Figure(), go.Figure(), go.Figure(), go.Figure(); tE, tI, tEp, tH = {}, {}, {}, {}
+    rows_lab = ["six index pairs"] + [nice(p) for p in ORDER]; keys = ["index"] + ORDER
+    for w, lab, f, n_ in ZW.WINDOWS:
+        unit = "weeks" if f == "W" else "trading days"; wtag = f"z window {lab}{' (daily closes)' if f == 'D' else ''}"
+        for p in ORDER + ["index"]:
+            ev = EVW[(EVW["window"] == w) & (EVW["pair"] == p)]; icp = ICW[(ICW["window"] == w) & (ICW["pair"] == p)]
+            tgt, meta = (fEp, ZW.SEP + w) if p == "index" else (fE, p + ZW.SEP + w); vis = (w == ZW.DEFAULT) and (p in ("index", DEFAULT_PAIR))
+            x = ev["x_weeks"].to_numpy()
+            tgt.add_trace(go.Scatter(x=x, y=ev["rw_p5"] * 100, mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False, meta=meta, visible=vis))
+            tgt.add_trace(go.Scatter(x=x, y=ev["rw_p95"] * 100, mode="lines", line={"width": 0}, fill="tonexty", fillcolor=NULL_FILL, name="random walks, middle 90%", hoverinfo="skip", meta=meta, visible=vis))
+            tgt.add_trace(go.Scatter(x=x, y=ev["real"] * 100, mode="lines+markers", line={"color": BLUE, "width": 2}, marker={"size": 4}, name="the ratio's touches" if p != "index" else "the six index pairs' touches", meta=meta, visible=vis,
+                                     customdata=np.c_[ev["k"], ev["rw_median"] * 100, ev["pct"]], hovertemplate="%{customdata[0]} " + unit + " after: %{y:+.2f}% (random walks %{customdata[1]:+.2f}%, percentile %{customdata[2]:.1f})<extra></extra>"))
+            if p == "index":
+                tEp[w] = E1.two_line(f"The six index pairs together · {wtag} · {int(ev['touches'].iloc[0])} first touches of the band · {ev['first'].iloc[0]} → {ev['last'].iloc[0]}",
+                                     "mean relative return of the signalled leg, k weeks after the touch, against the same on random walks" + (" (daily: trading days ÷ 5)" if f == "D" else ""))
+                continue
+            tE[p + ZW.SEP + w] = E1.two_line(f"{nice(p)} · {wtag} · {ev['first'].iloc[0]} → {ev['last'].iloc[0]} · {int(ev['touches'].iloc[0])} first touches of the band",
+                                             "mean relative return of the signalled leg against the other, k weeks after the touch (above 0 = the swing back the rule bets on)" + (" — daily: trading days ÷ 5" if f == "D" else ""))
+            fI.add_trace(go.Scatter(x=icp["x_weeks"], y=icp["rw_p5"], mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False, meta=meta, visible=vis))
+            fI.add_trace(go.Scatter(x=icp["x_weeks"], y=icp["rw_p95"], mode="lines", line={"width": 0}, fill="tonexty", fillcolor=NULL_FILL, name="random walks, middle 90%", hoverinfo="skip", meta=meta, visible=vis))
+            fI.add_trace(go.Scatter(x=icp["x_weeks"], y=icp["ic"], mode="lines+markers", line={"color": BLUE, "width": 2}, marker={"size": 8}, name="the ratio", meta=meta, visible=vis,
+                                    customdata=np.c_[icp["h"], icp["pct"], icp["ic_first_half"], icp["ic_second_half"]],
+                                    hovertemplate="%{customdata[0]} " + unit + ": IC %{y:+.3f}, percentile %{customdata[1]:.1f}<br>first half %{customdata[2]:+.3f}, second half %{customdata[3]:+.3f}<extra></extra>"))
+            tI[p + ZW.SEP + w] = E1.two_line(f"{nice(p)} · {wtag} · {icp['first'].iloc[0]} → {icp['last'].iloc[0]} · rank correlation of −z with the next k {unit}' relative return",
+                                             "above 0 = a stretched ratio tends to come back (a below-band ratio is followed by the first leg doing better); grey = what random walks give")
+        hg = IC_H if f == "W" else IC_D; ic_w = ICW[ICW["window"] == w]
+        cell = lambda p, h: ic_w[(ic_w["pair"] == p) & (ic_w["h"] == h)].iloc[0]        # noqa: E731
+        fH.add_trace(go.Heatmap(z=[[cell(p, h)["pct"] for h in hg] for p in keys], x=[f"{h} {'wk' if f == 'W' else 'd'}" for h in hg], y=rows_lab, zmin=0, zmax=100, colorscale=E1.DIV_LIGHT,
+                                text=[[(f"{cell(p, h)['ic']:+.2f}" if E1.notable(cell(p, h)["pct"]) else "") for h in hg] for p in keys], texttemplate="%{text}",
+                                customdata=[[f"IC {cell(p, h)['ic']:+.3f} (random walks {cell(p, h)['rw_median']:+.3f}), percentile {cell(p, h)['pct']:.1f}" for h in hg] for p in keys],
+                                hovertemplate="%{y} · %{x}<br>%{customdata}<extra></extra>", xgap=2, ygap=2, meta=ZW.SEP + w, visible=(w == ZW.DEFAULT),
+                                colorbar={"title": {"text": "percentile", "side": "right"}, "tickvals": [0, 5, 50, 95, 100], "thickness": 12}))
+        tH[w] = f"Information coefficient against random walks · {wtag}: red = the z-score ranks future relative returns better than chance (labels on notable cells; {win_notable[w][0]} of {win_notable[w][1]} notable)"
+    titles["ev"] = tE; titles["ic"] = tI; titles["ev_pool"] = tEp; titles["h_ic"] = tH
+    for fg in (fE, fEp):
+        fg.add_hline(y=0, line={"color": AXIS, "width": 1}); fg.update_xaxes(title={"text": "weeks after the first touch (daily windows: trading days ÷ 5)", "font": {"color": INK2}}); fg.update_yaxes(ticksuffix="%", title={"text": "signalled leg − the other", "font": {"color": INK2}})
+    figs["ev"] = E1.style(fE, tE[DEFAULT_PAIR + ZW.SEP + ZW.DEFAULT], 460, legend_top=True); figs["ev_pool"] = E1.style(fEp, tEp[ZW.DEFAULT], 440, legend_top=True)
+    fI.add_hline(y=0, line={"color": AXIS, "width": 1}); fI.update_xaxes(type="log", tickvals=[0.2, 1, 4, 13, 26, 52], ticktext=["1 d", "1 wk", "4 wk", "13 wk", "26 wk", "52 wk"], title={"text": "horizon", "font": {"color": INK2}})
+    fI.update_yaxes(title={"text": "information coefficient", "font": {"color": INK2}}); figs["ic"] = E1.style(fI, tI[DEFAULT_PAIR + ZW.SEP + ZW.DEFAULT], 440, legend_top=True)
+    fH.update_yaxes(autorange="reversed", showgrid=False, automargin=True, ticksuffix="  "); fH.update_xaxes(showgrid=False, side="top"); figs["h_ic"] = E1.style(fH, tH[ZW.DEFAULT], 520, legend=False, left=150)
     fO.add_hline(y=1, line={"color": AXIS, "width": 1}, row=1, col=1); fO.add_hline(y=0, line={"color": AXIS, "width": 1}, row=2, col=1)
     fO.update_yaxes(title={"text": "relative NAV", "font": {"color": INK2}}, row=1, col=1); fO.update_yaxes(ticksuffix=" pp", row=2, col=1)
     figs["op"] = E1.style(fO, titles["op"][DEFAULT_PAIR], 640, legend_top=True)
-    fE.add_hline(y=0, line={"color": AXIS, "width": 1}); fE.update_xaxes(title={"text": "weeks after the first touch", "font": {"color": INK2}}); fE.update_yaxes(ticksuffix="%", title={"text": "signalled leg − the other", "font": {"color": INK2}})
-    figs["ev"] = E1.style(fE, titles["ev"][DEFAULT_PAIR], 460, legend_top=True)
-    fI.add_hline(y=0, line={"color": AXIS, "width": 1}); fI.update_xaxes(type="category", title={"text": "horizon, weeks", "font": {"color": INK2}}); fI.update_yaxes(title={"text": "information coefficient", "font": {"color": INK2}})
-    figs["ic"] = E1.style(fI, titles["ic"][DEFAULT_PAIR], 440, legend_top=True)
-    # pooled event study (static)
-    real, lo, md_, hi, pc = EV_["index"]; ks = np.arange(1, K_MAX + 1); nt = int(sum(R[p]["ev_cnt"][0] for p in INDEX_PAIRS))
-    f = go.Figure([go.Scatter(x=ks, y=lo * 100, mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False),
-                   go.Scatter(x=ks, y=hi * 100, mode="lines", line={"width": 0}, fill="tonexty", fillcolor=NULL_FILL, name="random walks, middle 90%", hoverinfo="skip"),
-                   go.Scatter(x=ks, y=real * 100, mode="lines+markers", line={"color": BLUE, "width": 2}, marker={"size": 4}, name="the six index pairs' touches", customdata=np.c_[md_ * 100, pc],
-                              hovertemplate="%{x} weeks after: %{y:+.2f}% (random walks %{customdata[0]:+.2f}%, percentile %{customdata[1]:.1f})<extra></extra>")])
-    f.add_hline(y=0, line={"color": AXIS, "width": 1}); f.update_xaxes(title={"text": "weeks after the first touch", "font": {"color": INK2}}); f.update_yaxes(ticksuffix="%", title={"text": "signalled leg − the other", "font": {"color": INK2}})
-    figs["ev_pool"] = E1.style(f, E1.two_line(f"The six index pairs together · {nt} first touches of the band · 2007–2026 (Micro250 pairs from 2023)", "mean relative return of the signalled leg, k weeks after the touch, against the same on random walks"), 440, legend_top=True)
     # heat maps
     def heat(zv, xl, yl, txt, hov, title, h):
         f = go.Figure(go.Heatmap(z=zv, x=xl, y=yl, zmin=0, zmax=100, colorscale=E1.DIV_LIGHT, text=txt, texttemplate="%{text}", customdata=hov, hovertemplate="%{y} · %{x}<br>%{customdata}<extra></extra>", xgap=2, ygap=2,
                                  colorbar={"title": {"text": "percentile", "side": "right"}, "tickvals": [0, 5, 50, 95, 100], "thickness": 12}))
         f.update_yaxes(autorange="reversed", showgrid=False, automargin=True, ticksuffix="  "); f.update_xaxes(showgrid=False, side="top")
         return E1.style(f, title, h, legend=False, left=150)
-    rows_lab = ["six index pairs"] + [nice(p) for p in ORDER]; keys = ["index"] + ORDER
-    figs["h_ic"] = heat([[g(ICS, p, k=k)["pct"] for k in IC_H] for p in keys], [f"{k} wk" for k in IC_H], rows_lab,
-                        [[(f"{g(ICS, p, k=k)['ic']:+.2f}" if E1.notable(g(ICS, p, k=k)["pct"]) else "") for k in IC_H] for p in keys],
-                        [[f"IC {g(ICS, p, k=k)['ic']:+.3f} (random walks {g(ICS, p, k=k)['rw_median']:+.3f}), percentile {g(ICS, p, k=k)['pct']:.1f}" for k in IC_H] for p in keys],
-                        "Information coefficient against random walks: red = the z-score ranks future relative returns better than chance (labels on notable cells)", 520)
     def rr_txt(p, s):
         r_ = g(RRS, p, stat=s); v = r_["real"]
         return (f"{v * 100:+.1f}%" if s in ("mean", "median") else (f"{v * 100:.0f}%" if s in ("hit", "long") else f"{v:.0f}" if s == "n" else f"{v:.1f}"))
@@ -360,19 +445,29 @@ def main():
     # ---------------------------------------------------------------- the page
     def per_pair(key, fig, tables, first=False) -> str:
         t = html.escape(json.dumps(titles[key]), quote=True)
-        tb = "".join(f"<div data-pair='{html.escape(p, quote=True)}'{'' if p == DEFAULT_PAIR else ' hidden'}>{tables[p]}</div>" for p in ORDER)
+        def div(k, tb_):
+            p, w = (k.split(ZW.SEP) + [None])[:2]; shown = p == DEFAULT_PAIR and (w is None or w == ZW.DEFAULT)
+            return f"<div data-pair='{html.escape(p, quote=True)}'" + (f" data-win='{w}'" if w else "") + f"{'' if shown else ' hidden'}>{tb_}</div>"
+        tb = "".join(div(k, v) for k, v in tables.items())
         return f"<div class='card per-pair' data-titles='{t}'>{E1.html_fig(fig, first=first)}<details><summary>Table view</summary>{tb}</details></div>"
+    def per_win(key, fig) -> str:
+        return f"<div class='card per-win' data-titles='{html.escape(json.dumps(titles[key]), quote=True)}'>{E1.html_fig(fig)}</div>"
     tab_sf = {p: E1.tbl(["entered", "exited", "leg", "weeks held", "strategy ÷ 50/50 during the trade"], [[r_["start"], r_["end"] + (" (open)" if r_["open"] else ""), r_["state"], int(r_["weeks"]), f"{pct_x(r_['log_contrib']):+.1f}%"]
                                                                                                       for _, r_ in SEG[(SEG["pair"] == p) & (SEG["kind"] == "trade")].sort_values("log_contrib").iterrows()]) for p in ORDER}
     tab_op = {p: E1.tbl(["year", "strategy", "50/50", "excess"], [[int(r_["year"]), f"{r_['strategy'] * 100:+.1f}%", f"{r_['5050'] * 100:+.1f}%", f"{r_['excess'] * 100:+.1f} pp"] for _, r_ in YE[YE["pair"] == p].iterrows()]) for p in ORDER}
-    tab_ev = {p: E1.tbl(["weeks after", "the ratio", "random walks' median", "5th–95th", "percentile"], [[int(r_["k"]), f"{r_['real'] * 100:+.2f}%", f"{r_['rw_median'] * 100:+.2f}%", f"{r_['rw_p5'] * 100:+.2f}% … {r_['rw_p95'] * 100:+.2f}%", E1.fpct(r_["pct"])] for _, r_ in EVS[EVS["pair"] == p].iterrows() if int(r_["k"]) in (1, 2, 4, 8, 13, 26, 39, 52)]) for p in ORDER}
-    tab_ic = {p: E1.tbl(["horizon", "IC", "random walks 5th–95th", "percentile", "first half", "second half"], [[f"{int(r_['k'])} wk", f"{r_['ic']:+.3f}", f"{r_['rw_p5']:+.3f} … {r_['rw_p95']:+.3f}", E1.fpct(r_["pct"]), f"{r_['ic_first_half']:+.3f}", f"{r_['ic_second_half']:+.3f}"] for _, r_ in ICS[ICS["pair"] == p].iterrows()]) for p in ORDER}
+    SHOW_K = {"W": (1, 2, 4, 8, 13, 26, 39, 52), "D": (1, 5, 20, 40, 65, 130, 195, 250)}
+    tab_ev = {p + ZW.SEP + w: E1.tbl([f"{'weeks' if f == 'W' else 'trading days'} after", "the ratio", "random walks' median", "5th–95th", "percentile"],
+                                     [[int(r_["k"]), f"{r_['real'] * 100:+.2f}%", f"{r_['rw_median'] * 100:+.2f}%", f"{r_['rw_p5'] * 100:+.2f}% … {r_['rw_p95'] * 100:+.2f}%", E1.fpct(r_["pct"])]
+                                      for _, r_ in EVW[(EVW["window"] == w) & (EVW["pair"] == p)].iterrows() if int(r_["k"]) in SHOW_K[f]]) for w, _, f, _ in ZW.WINDOWS for p in ORDER}
+    tab_ic = {p + ZW.SEP + w: E1.tbl(["horizon", "IC", "random walks 5th–95th", "percentile", "first half", "second half"],
+                                     [[f"{int(r_['h'])} {'wk' if f == 'W' else 'd'}", f"{r_['ic']:+.3f}", f"{r_['rw_p5']:+.3f} … {r_['rw_p95']:+.3f}", E1.fpct(r_["pct"]), f"{r_['ic_first_half']:+.3f}", f"{r_['ic_second_half']:+.3f}"]
+                                      for _, r_ in ICW[(ICW["window"] == w) & (ICW["pair"] == p)].iterrows()]) for w, _, f, _ in ZW.WINDOWS for p in ORDER}
     o_rows = [[nice(r_["pair"]), f"{r_['first']} → {r_['last']}", f"{r_['cagr'] * 100:.1f}%", f"{r_['cagr_5050'] * 100:.1f}%", f"{r_['excess_cagr'] * 100:+.1f} pp", f"{r_['ir']:+.2f}", f"{r_['years_ahead'] * 100:.0f}% of {r_['n_years']}", f"{r_['rel_maxdd'] * 100:.0f}%"] for _, r_ in OPF.iterrows()]
     ixp = OPF[OPF["pair"].isin(INDEX_PAIRS)]; ev26 = g(EVS, "index", k=26); ev13 = g(EVS, "index", k=13); ic26 = g(ICS, "index", k=26); hit = g(RRS, "index", stat="hit"); mean_ = g(RRS, "index", stat="mean"); lng = g(RRS, "index", stat="long")
     opts = "".join(f"<option value='{html.escape(p, quote=True)}'{' selected' if p == DEFAULT_PAIR else ''}>{nice(p)}</option>" for p in ORDER)
     H = [E1.PAGE_HEAD.replace("__CSS__", E1.CSS).replace("<title>Ratio cycles</title>", "<title>Signal strength</title>"),
          "<header class='bar'><div class='bar-inner'><b>E04 · signal strength</b><span class='tag'>EXPLORATORY</span>",
-         f"<label>Pair <select id='pair'>{opts}</select></label><button id='theme' type='button'>Dark</button></div></header><main>",
+         f"<label>Pair <select id='pair'>{opts}</select></label>{ZW.select_html()}<button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>Does the ratio band have any predictive power?</h1>",
          f"<p>Four looks at T03 — the ±1 sd first-touch switch on the plain ratio, exit at the trailing mean, no maximum hold (window {WIN}, exit {EXIT}, {COST} bps), refuted against random timing. "
          f"<b>1.</b> Its outperformance against 50/50 over time. <b>2.</b> What follows a touch of the band. <b>3.</b> Whether the z-score ranks future relative returns at all. <b>4.</b> The same rule run on {D:,} random walks per pair (E01's: each ratio's own week-by-week volatility and point-in-time drift, no swing-back), to see whether its trade statistics are signal or mechanics. "
@@ -384,12 +479,17 @@ def main():
          f"<b>Against chance:</b> {n_not} of {len(counted)} counted percentiles are notable (about {0.1 * len(counted):.0f} by chance).</p></div>",
          "<h2>1 · Outperformance against 50/50</h2><div class='card'>" + E1.tbl(["pair", "window", "CAGR", "50/50 bought once", "excess a year", "information ratio", "years ahead", "worst fall of strategy ÷ 50/50"], o_rows) + "</div>",
          per_pair("op", figs["op"], tab_op, first=True),
-         "<h2>2 · What follows a touch of the band (signal strength)</h2><p class='note'>Every first touch, traded or not. Blue: the signalled leg's return against the other, on average, k weeks later. Grey: the same on random walks. The rule makes money only if the blue line runs above the grey band.</p>",
-         "<div class='card'>" + E1.html_fig(figs["ev_pool"]) + "</div>",
+         "<h2>2 · What follows a touch of the band (signal strength)</h2><p class='note'>Every first touch, traded or not. Blue: the signalled leg's return against the other, on average, k weeks later. Grey: the same on random walks. The rule makes money only if the blue line runs above the grey band. <b>The z window dropdown at the top</b> switches sections 2 and 3 between the 52-week band (T03's) and shorter weekly and daily windows; daily windows use daily closes and daily random walks.</p>",
+         per_win("ev_pool", figs["ev_pool"]),
          per_pair("ev", figs["ev"], tab_ev),
          "<h2>3 · Does the z-score rank future relative returns? (information coefficient)</h2><p class='note'>Every week after the warm-up: the rank correlation of −z with the next k weeks' relative return. The weeks overlap, so the random walks (with the same overlap) are the yardstick, not a textbook t-statistic.</p>",
          per_pair("ic", figs["ic"], tab_ic),
-         "<div class='card'>" + E1.html_fig(figs["h_ic"]) + "</div>",
+         per_win("h_ic", figs["h_ic"]),
+         "<div class='card'><p class='note' style='margin:4px 0'>Every window at a glance (pooled six index pairs; random walks' median, percentile):</p>" + E1.tbl(["z window", "touches", "after ≈13 weeks", "after ≈26 weeks", "IC ≈4 weeks", "IC ≈26 weeks", "IC percentiles notable"],
+             [[f"{lab}{' (daily)' if f == 'D' else ''}"] + (lambda rr_: [int(rr_[0]["touches"])] + [f"{x['real'] * 100:+.2f}% ({x['rw_median'] * 100:+.2f}%, {E1.fpct(x['pct'])})" for x in rr_[:2]] + [f"{x['ic']:+.3f} ({x['rw_median']:+.3f}, {E1.fpct(x['pct'])})" for x in rr_[2:]])(
+                 [EVW[(EVW["window"] == w) & (EVW["pair"] == "index") & (EVW["k"] == (13 if f == "W" else 65))].iloc[0], EVW[(EVW["window"] == w) & (EVW["pair"] == "index") & (EVW["k"] == (26 if f == "W" else 130))].iloc[0],
+                  ICW[(ICW["window"] == w) & (ICW["pair"] == "index") & (ICW["h"] == (4 if f == "W" else 20))].iloc[0], ICW[(ICW["window"] == w) & (ICW["pair"] == "index") & (ICW["h"] == (26 if f == "W" else 130))].iloc[0]]) + [f"{win_notable[w][0]} of {win_notable[w][1]}"]
+              for w, lab, f, _ in ZW.WINDOWS]) + "</div>",
          "<h2>4 · The rule on random walks: signal or mechanics?</h2><p class='note'>An exit at a <i>trailing</i> mean wins often on any series, because the mean also moves towards the ratio. So a high hit rate means something only if it beats what the same rule gives on random walks. Trades after the warm-up, relative return decision close to decision close (no cost).</p>",
          "<div class='card'>" + E1.html_fig(figs["h_rr"]) + "<details><summary>Table view</summary>" + E1.tbl(["pair"] + [lab for _, lab, _ in STATS], [[("six index pairs" if p == "index" else nice(p))] + [f"{rr_txt(p, s)} ({E1.fpct(g(RRS, p, stat=s)['pct'])})" for s, _, _ in STATS] for p in keys]) + "<p class='note'>The real value (percentile among the random walks).</p></details></div>",
          "<h2>5 · Where the shortfall comes from</h2><p class='note'>The strategy's value against 50/50 changes only through what the sleeve holds, so it splits exactly into one piece per holding period: each trade, and each neutral stretch between trades. Orange = held over 52 weeks.</p>",

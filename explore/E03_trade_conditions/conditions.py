@@ -28,8 +28,10 @@ sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_
 from analysis.approved_data import GOLD, fingerprints, load_daily  # noqa: E402
 from analysis.ratio_engine import PAIRS, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (E01's z-score, random paths, percentiles and the page's styling)
+import zwin as ZW  # noqa: E402  (the z windows: weekly 13 / 26 / 52, daily 20 / 60 / 120 / 250)
 
 HORIZONS = (4, 13, 26)
+HORIZONS_D = (20, 65, 130)                      # daily windows: the same horizons in trading days (5 a week)
 BUCKETS = (("< −2", -np.inf, -2.0), ("−2 to −1", -2.0, -1.0), ("−1 to 0", -1.0, 0.0), ("0 to 1", 0.0, 1.0), ("1 to 2", 1.0, 2.0), ("> 2", 2.0, np.inf), ("all weeks", -np.inf, np.inf))
 CHART_BUCKETS = [b[0] for b in BUCKETS[:-1]]
 TESTS = ("T03",); MAIN = TESTS[0]; RUN = "headline"; WIN, EXIT = 52, "E1"   # T03 = the rule with no maximum hold
@@ -99,6 +101,53 @@ def profiles(pair, pid, px, D):
                         row["spread_mean_pct"] = E1.pctile(mu[0], mu[1:]); row["spread_median_pct"] = E1.pctile(md[0], md[1:])
             rows.append(row)
     return rows, chk, dates[E1.BURN].date().isoformat(), dates[-1].date().isoformat()
+
+
+# ------------------------------------------------------------------------------------------------------- Part A, any window
+def profiles_win(pair, pid, px, D, w):
+    """Part A for z window w: the real ratio and D random paths of the window's frequency (weekly: E01's, identical to
+    profiles(); daily: the daily paths), in chunks. Weekly windows: every statistic as profiles(). Daily windows: the
+    random walks' per-path means for every series and per-path medians for the spread only (the chart and the heat map use
+    means and the spread); the real ratio's medians are exact."""
+    _, lab, f, n = ZW.WIN[w]; burn = ZW.BURN[f]; hz = HORIZONS if f == "W" else HORIZONS_D
+    ser = ZW.series(pair_frame(px, pair, "plain"), f); dates = ser.index; a, b = ser["ca"].to_numpy(), ser["cb"].to_numpy(); lnr = np.log(a / b); L = len(lnr)
+    M = 0.5 * (np.log(a) + np.log(b))
+
+    def block(Pb, full):
+        Zb = ZW.trailing_z(np.exp(Pb), n); lna = M[None, :] + 0.5 * Pb; lnb = M[None, :] - 0.5 * Pb; out = {}
+        for k in hz:
+            Ra = np.exp(lna[:, k:] - lna[:, :-k]) - 1; Rb = np.exp(lnb[:, k:] - lnb[:, :-k]) - 1; zk = Zb[:, :-k]
+            X = {"cheap": np.where(zk < 0, Ra, Rb), "rich": np.where(zk < 0, Rb, Ra)}; X["spread"] = X["cheap"] - X["rich"]; X["both"] = 0.5 * (Ra + Rb)
+            ok = np.zeros(L - k, bool); ok[burn:] = True
+            for blab, lo, hi in BUCKETS:
+                mask = ok[None, :] & (zk >= lo) & (zk < hi); cntm = mask.sum(axis=1)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    for name, Xv in X.items():
+                        mu = np.where(mask, Xv, 0.0).sum(axis=1) / np.where(cntm > 0, cntm, np.nan)
+                        md = np.nanmedian(np.where(mask, Xv, np.nan), axis=1) if (full or name == "spread") else np.full(len(Pb), np.nan)
+                        out[(k, blab, name)] = (mu, md)
+                out[(k, blab, "mask0")] = mask[0]
+        return out
+    real = block(lnr[None, :], True); nulls = []
+    for _, Pc in ZW.random_log_paths(lnr, pid, f, D):
+        nulls.append(block(Pc, f == "W"))
+    rows = []
+    for k in hz:
+        for blab, _, _ in BUCKETS:
+            m0 = real[(k, blab, "mask0")]
+            row = {"window": w, "pair": pair, "horizon": k, "bucket": blab, "weeks": int(m0.sum()), "episodes": int((np.diff(np.concatenate([[0], m0.astype(np.int8), [0]])) == 1).sum())}
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                for name in ("cheap", "rich", "spread", "both"):
+                    mu = np.concatenate([real[(k, blab, name)][0]] + [nb[(k, blab, name)][0] for nb in nulls]); md = np.concatenate([real[(k, blab, name)][1]] + [nb[(k, blab, name)][1] for nb in nulls])
+                    row[f"{name}_mean"] = float(mu[0]); row[f"{name}_median"] = float(md[0]); row[f"{name}_mean_rw"] = float(np.nanmedian(mu[1:]))
+                    row[f"{name}_median_rw"] = float(np.nanmedian(md[1:])) if np.isfinite(md[1:]).any() else float("nan")
+                    if name == "spread":
+                        row["spread_mean_lo"] = float(np.nanpercentile(mu[1:], 5)); row["spread_mean_hi"] = float(np.nanpercentile(mu[1:], 95))
+                        row["spread_mean_pct"] = E1.pctile(mu[0], mu[1:]); row["spread_median_pct"] = E1.pctile(md[0], md[1:])
+            rows.append(row)
+    return rows, dates[burn].date().isoformat(), dates[-1].date().isoformat()
 
 
 # ------------------------------------------------------------------------------------------------------- Part B
@@ -212,6 +261,23 @@ def main():
     if max(A_chk.values()) > 1e-9:
         sys.exit(f"Part A: the real path's z is not E01's z: {A_chk}")
     PR = pd.DataFrame(prof); PR.to_csv(os.path.join(OUT, "z_profiles.csv"), index=False)
+    # Part A for the other z windows (the 52-week rows are the ones above; the general code is checked against them)
+    profw, winw = [], {}
+    for pid, pair in enumerate(PAIRS):
+        for w, lab, f, n_ in ZW.WINDOWS:
+            if w == ZW.DEFAULT and pair != PAIRS[0]:
+                continue
+            rows_w, f_, l_ = profiles_win(pair, pid, px, D, w); winw[(pair, w)] = (f_, l_)
+            if w == ZW.DEFAULT:                                                 # the general code must reproduce profiles() exactly
+                a_ = pd.DataFrame(rows_w).set_index(["horizon", "bucket"])["spread_mean"]; b_ = PR[PR["pair"] == pair].set_index(["horizon", "bucket"])["spread_mean"]
+                if not np.allclose(a_.reindex(b_.index).to_numpy(), b_.to_numpy(), atol=1e-12, equal_nan=True):
+                    sys.exit("Part A: the window code does not reproduce the 52-week profiles")
+                continue
+            profw += rows_w
+        print(f"  A windows {pair:18s} [{time.time() - t0:4.0f}s]", flush=True)
+    PRW = pd.concat([PR.assign(window=ZW.DEFAULT), pd.DataFrame(profw)], ignore_index=True); PRW.to_csv(os.path.join(OUT, "z_profiles_windows.csv"), index=False)
+    for pair in PAIRS:
+        winw[(pair, ZW.DEFAULT)] = win[pair]
     # ---------------------------------------------------------------- Part B
     series, zall, PIT = {}, {}, [0, []]
     for pair in PAIRS:
@@ -268,7 +334,15 @@ def main():
         for _, r in PR[PR["pair"] == p].iterrows():
             md.append(f"| {r['horizon']} wk | {r['bucket']} | {r['weeks']} ({r['episodes']}) | {E1.fp(r['cheap_mean'])} / {E1.fp(r['cheap_median'])} | {E1.fp(r['rich_mean'])} / {E1.fp(r['rich_median'])} | {E1.fp(r['spread_mean'])} ({E1.fp(r['spread_mean_rw'])}, {pq(r['spread_mean_pct'])}) | {E1.fp(r['spread_median'])} ({pq(r['spread_median_pct'])}) | {E1.fp(r['both_mean'])} |")
         md.append("")
-    md += ["## Part B — the market's condition at entry, good trades (extra > 0) vs bad\n"]
+    md += ["## Part A for every z window — the spread's mean at the middle horizon (≈13 weeks; daily: 65 trading days), stretched buckets (random walks' median, percentile)\n",
+           "| pair | " + " | ".join(f"{lab}{' (daily)' if f == 'D' else ''}" for _, lab, f, _ in ZW.WINDOWS) + " |", "|---|" + "---|" * len(ZW.WINDOWS)]
+    for p in ORDER:
+        cells = []
+        for w, lab, f, n_ in ZW.WINDOWS:
+            kk = 13 if f == "W" else 65; s_ = PRW[(PRW["window"] == w) & (PRW["pair"] == p) & (PRW["horizon"] == kk)].set_index("bucket")
+            cells.append("; ".join(f"{b_} {s_.loc[b_, 'spread_mean'] * 100:+.1f}% ({pq(s_.loc[b_, 'spread_mean_pct'])})" for b_ in ("< −2", "−2 to −1", "1 to 2", "> 2")))
+        md.append(f"| {nice(p)} | " + " | ".join(cells) + " |")
+    md += ["", "## Part B — the market's condition at entry, good trades (extra > 0) vs bad\n"]
     for test, pool in POOLS:
         rows = stats[(test, pool)]; sub = TR[(TR["test"] == test) & (TR["pool"] == pool)]
         md += [f"### {test}, {pool} pairs · {len(sub)} closed trades, {int(sub['good'].sum())} good\n",
@@ -287,42 +361,52 @@ def main():
     # ---------------------------------------------------------------- figures
     figs = {}; titles = {"prof": {}, "tl": {}, "days": {}}
     # A1. per pair: mean forward return by bucket, three horizons
-    fA = make_subplots(rows=3, cols=1, shared_xaxes=False, vertical_spacing=0.09, subplot_titles=[f"{k} weeks ahead" for k in HORIZONS])
-    for p in ORDER:
-        vis = p == DEFAULT_PAIR; sub = PR[(PR["pair"] == p) & (PR["bucket"] != "all weeks")]
-        for i, k in enumerate(HORIZONS):
-            s = sub[sub["horizon"] == k].set_index("bucket").reindex(CHART_BUCKETS); lead = i == 0
-            hv = [f"{b}: {w} weeks, {e} episodes" for b, w, e in zip(CHART_BUCKETS, s["weeks"], s["episodes"])]
-            fA.add_trace(go.Bar(x=CHART_BUCKETS, y=s["cheap_mean"] * 100, marker={"color": AQUA}, name="cheaper leg (has lagged)", meta=p, visible=vis, showlegend=lead, legendgroup="c", customdata=hv, hovertemplate="%{customdata}<br>cheaper leg %{y:+.1f}%<extra></extra>"), row=i + 1, col=1)
-            fA.add_trace(go.Bar(x=CHART_BUCKETS, y=s["rich_mean"] * 100, marker={"color": ORANGE}, name="richer leg", meta=p, visible=vis, showlegend=lead, legendgroup="r", customdata=hv, hovertemplate="%{customdata}<br>richer leg %{y:+.1f}%<extra></extra>"), row=i + 1, col=1)
-            fA.add_trace(go.Bar(x=CHART_BUCKETS, y=s["spread_mean"] * 100, marker={"color": BLUE}, name="spread (cheaper − richer)", meta=p, visible=vis, showlegend=lead, legendgroup="s", customdata=[[v] for v in s["spread_mean_pct"]], hovertemplate="spread %{y:+.1f}% · percentile %{customdata[0]:.1f}<extra></extra>"), row=i + 1, col=1)
-            fA.add_trace(go.Scatter(x=CHART_BUCKETS, y=s["spread_mean_rw"] * 100, mode="markers", marker={"color": MUTED, "size": 7, "symbol": "line-ew-open", "line": {"width": 2}}, name="random walks' spread: median and 5th–95th", meta=p, visible=vis, showlegend=lead, legendgroup="n",
-                                    error_y={"type": "data", "symmetric": False, "array": (s["spread_mean_hi"] - s["spread_mean_rw"]) * 100, "arrayminus": (s["spread_mean_rw"] - s["spread_mean_lo"]) * 100, "color": MUTED, "thickness": 1.2, "width": 6},
-                                    hovertemplate="random walks: median %{y:+.1f}%<extra></extra>"), row=i + 1, col=1)
-        titles["prof"][p] = E1.two_line(f"{nice(p)} · {win[p][0]} → {win[p][1]} · mean forward return of each leg by the ratio's z-score that week",
-                                        "cheaper leg = the one that has lagged (a when z < 0, b when z > 0); the grey mark is what the random walks give the spread (their median, 5th–95th)")
+    fA = make_subplots(rows=3, cols=1, shared_xaxes=False, vertical_spacing=0.09, subplot_titles=["≈4 weeks ahead (daily windows: 20 trading days)", "≈13 weeks ahead (65 trading days)", "≈26 weeks ahead (130 trading days)"])
+    for w, wlab, f, n_ in ZW.WINDOWS:
+        hz = HORIZONS if f == "W" else HORIZONS_D; per = "weeks" if f == "W" else "days"
+        for p in ORDER:
+            vis = (p == DEFAULT_PAIR) and (w == ZW.DEFAULT); sub = PRW[(PRW["window"] == w) & (PRW["pair"] == p) & (PRW["bucket"] != "all weeks")]; mw = p + ZW.SEP + w
+            for i, k in enumerate(hz):
+                s_ = sub[sub["horizon"] == k].set_index("bucket").reindex(CHART_BUCKETS); lead = i == 0
+                hv = [f"{b_}: {wk_} {per}, {e_} episodes" for b_, wk_, e_ in zip(CHART_BUCKETS, s_["weeks"], s_["episodes"])]
+                fA.add_trace(go.Bar(x=CHART_BUCKETS, y=s_["cheap_mean"] * 100, marker={"color": AQUA}, name="cheaper leg (has lagged)", meta=mw, visible=vis, showlegend=lead, legendgroup="c", customdata=hv, hovertemplate="%{customdata}<br>cheaper leg %{y:+.1f}%<extra></extra>"), row=i + 1, col=1)
+                fA.add_trace(go.Bar(x=CHART_BUCKETS, y=s_["rich_mean"] * 100, marker={"color": ORANGE}, name="richer leg", meta=mw, visible=vis, showlegend=lead, legendgroup="r", customdata=hv, hovertemplate="%{customdata}<br>richer leg %{y:+.1f}%<extra></extra>"), row=i + 1, col=1)
+                fA.add_trace(go.Bar(x=CHART_BUCKETS, y=s_["spread_mean"] * 100, marker={"color": BLUE}, name="spread (cheaper − richer)", meta=mw, visible=vis, showlegend=lead, legendgroup="s", customdata=[[v] for v in s_["spread_mean_pct"]], hovertemplate="spread %{y:+.1f}% · percentile %{customdata[0]:.1f}<extra></extra>"), row=i + 1, col=1)
+                fA.add_trace(go.Scatter(x=CHART_BUCKETS, y=s_["spread_mean_rw"] * 100, mode="markers", marker={"color": MUTED, "size": 7, "symbol": "line-ew-open", "line": {"width": 2}}, name="random walks' spread: median and 5th–95th", meta=mw, visible=vis, showlegend=lead, legendgroup="n",
+                                        error_y={"type": "data", "symmetric": False, "array": (s_["spread_mean_hi"] - s_["spread_mean_rw"]) * 100, "arrayminus": (s_["spread_mean_rw"] - s_["spread_mean_lo"]) * 100, "color": MUTED, "thickness": 1.2, "width": 6},
+                                        hovertemplate="random walks: median %{y:+.1f}%<extra></extra>"), row=i + 1, col=1)
+            f0, l0 = winw[(p, w)]
+            titles["prof"][mw] = E1.two_line(f"{nice(p)} · z window {wlab}{' (daily closes)' if f == 'D' else ''} · {f0} → {l0} · mean forward return of each leg by the ratio's z-score",
+                                             "cheaper leg = the one that has lagged (a when z < 0, b when z > 0); the grey mark is what the random walks give the spread (their median, 5th–95th)")
     fA.update_layout(barmode="group", bargap=0.25)
     for i in range(3):
         fA.update_yaxes(ticksuffix="%", title={"text": "forward return", "font": {"color": INK2}}, row=i + 1, col=1); fA.add_hline(y=0, line={"color": AXIS, "width": 1}, row=i + 1, col=1)
     fA.update_xaxes(title={"text": "z-score bucket at the start (z < −1 or > 1 = outside the ±1 sd band)", "font": {"color": INK2}}, row=3, col=1)
-    figs["prof"] = E1.style(fA, titles["prof"][DEFAULT_PAIR], 900, legend_top=True)
-    # A2. all pairs: percentile of the spread's mean among the random walks, bucket x horizon
-    cols = [f"{b} · {k} wk" for k in HORIZONS for b in CHART_BUCKETS]
-    zv, tx, hv = [], [], []
-    for p in ORDER:
-        sub = PR[PR["pair"] == p].set_index(["horizon", "bucket"]); zz, tt, hh = [], [], []
-        for k in HORIZONS:
-            for b in CHART_BUCKETS:
-                r = sub.loc[(k, b)]; zz.append(r["spread_mean_pct"] if r["weeks"] >= 8 else float("nan"))
-                tt.append(f"{r['spread_mean'] * 100:+.1f}%" if (r["weeks"] >= 8 and E1.notable(r["spread_mean_pct"])) else "")
-                hh.append(f"{r['weeks']} weeks ({r['episodes']} episodes): spread {r['spread_mean'] * 100:+.1f}% (random walks {r['spread_mean_rw'] * 100:+.1f}%), percentile {r['spread_mean_pct']:.1f}" if r["weeks"] >= 8 else f"{r['weeks']} weeks: too few")
-        zv.append(zz); tx.append(tt); hv.append(hh)
-    f = go.Figure(go.Heatmap(z=zv, x=cols, y=[nice(p) for p in ORDER], zmin=0, zmax=100, colorscale=E1.DIV_LIGHT, text=tx, texttemplate="%{text}", customdata=hv, hovertemplate="%{y} · %{x}<br>%{customdata}<extra></extra>", xgap=2, ygap=2,
-                             colorbar={"title": {"text": "percentile", "side": "right"}, "tickvals": [0, 5, 50, 95, 100], "thickness": 12}))
-    f.update_yaxes(autorange="reversed", showgrid=False, automargin=True, ticksuffix="  "); f.update_xaxes(showgrid=False, side="bottom", tickangle=-45, automargin=True)
+    figs["prof"] = E1.style(fA, titles["prof"][DEFAULT_PAIR + ZW.SEP + ZW.DEFAULT], 900, legend_top=True)
+    # A2. all pairs: percentile of the spread's mean among the random walks, bucket x horizon, one heat map per window
+    fHp = go.Figure(); titles["h_prof"] = {}; a_notable = {}
+    for w, wlab, f, n_ in ZW.WINDOWS:
+        hz = HORIZONS if f == "W" else HORIZONS_D; per = "weeks" if f == "W" else "days"; unit = "wk" if f == "W" else "d"
+        cols = [f"{b_} · {k} {unit}" for k in hz for b_ in CHART_BUCKETS]; zv, tx, hv = [], [], []; cnt = [0, 0]
+        for p in ORDER:
+            sub = PRW[(PRW["window"] == w) & (PRW["pair"] == p)].set_index(["horizon", "bucket"]); zz, tt, hh = [], [], []
+            for k in hz:
+                for b_ in CHART_BUCKETS:
+                    r = sub.loc[(k, b_)]; okr = r["weeks"] >= 8; zz.append(r["spread_mean_pct"] if okr else float("nan"))
+                    if okr:
+                        cnt[1] += 1; cnt[0] += int(E1.notable(r["spread_mean_pct"]))
+                    tt.append(f"{r['spread_mean'] * 100:+.1f}%" if (okr and E1.notable(r["spread_mean_pct"])) else "")
+                    hh.append(f"{r['weeks']} {per} ({r['episodes']} episodes): spread {r['spread_mean'] * 100:+.1f}% (random walks {r['spread_mean_rw'] * 100:+.1f}%), percentile {r['spread_mean_pct']:.1f}" if okr else f"{r['weeks']} {per}: too few")
+            zv.append(zz); tx.append(tt); hv.append(hh)
+        a_notable[w] = tuple(cnt)
+        fHp.add_trace(go.Heatmap(z=zv, x=cols, y=[nice(p) for p in ORDER], zmin=0, zmax=100, colorscale=E1.DIV_LIGHT, text=tx, texttemplate="%{text}", customdata=hv, hovertemplate="%{y} · %{x}<br>%{customdata}<extra></extra>", xgap=2, ygap=2,
+                                 meta=ZW.SEP + w, visible=(w == ZW.DEFAULT), colorbar={"title": {"text": "percentile", "side": "right"}, "tickvals": [0, 5, 50, 95, 100], "thickness": 12}))
+        titles["h_prof"][w] = E1.two_line(f"The spread's mean forward return against the random walks, by z bucket and horizon (all pairs) · z window {wlab}{' (daily closes)' if f == 'D' else ''}",
+                                          f"red = the cheaper leg beat the richer leg by more than a random walk gives; blue = by less; labels on notable cells ({cnt[0]} of {cnt[1]}); blank = fewer than 8 periods")
+    fHp.update_yaxes(autorange="reversed", showgrid=False, automargin=True, ticksuffix="  "); fHp.update_xaxes(showgrid=False, side="bottom", tickangle=-45, automargin=True)
     for i in (1, 2):
-        f.add_vline(x=i * 6 - 0.5, line={"color": AXIS, "width": 1})
-    figs["h_prof"] = E1.style(f, E1.two_line("The spread's mean forward return against the random walks, by z bucket and horizon (all pairs)", "red = the cheaper leg beat the richer leg by more than a random walk gives; blue = by less; labels on notable cells; blank = fewer than 8 weeks"), 620, legend=False, left=130)
+        fHp.add_vline(x=i * 6 - 0.5, line={"color": AXIS, "width": 1})
+    figs["h_prof"] = E1.style(fHp, titles["h_prof"][ZW.DEFAULT], 620, legend=False, left=130)
     # B1. per pair: the trades on the two legs
     fT = make_subplots(rows=len(TESTS), cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=[f"{t} trades (no maximum hold)" for t in TESTS])
     for p in ORDER:
@@ -406,11 +490,17 @@ def main():
     # ---------------------------------------------------------------- the page
     def per_pair(key, fig, tables, first=False) -> str:
         t = html.escape(json.dumps(titles[key]), quote=True)
-        tb = "".join(f"<div data-pair='{html.escape(p, quote=True)}'{'' if p == DEFAULT_PAIR else ' hidden'}>{tables[p]}</div>" for p in ORDER)
+        def div(k, tb_):
+            p, w = (k.split(ZW.SEP) + [None])[:2]; shown = p == DEFAULT_PAIR and (w is None or w == ZW.DEFAULT)
+            return f"<div data-pair='{html.escape(p, quote=True)}'" + (f" data-win='{w}'" if w else "") + f"{'' if shown else ' hidden'}>{tb_}</div>"
+        tb = "".join(div(k, v) for k, v in tables.items())
         return f"<div class='card per-pair' data-titles='{t}'>{E1.html_fig(fig, first=first)}<details><summary>Table view</summary>{tb}</details></div>"
-    tab_prof = {p: E1.tbl(["horizon", "z bucket", "weeks (episodes)", "cheaper: mean / median", "richer: mean / median", "spread: mean (random walks, pct)", "spread: median (pct)", "both legs: mean"],
-                          [[f"{r['horizon']} wk", r["bucket"], f"{r['weeks']} ({r['episodes']})", f"{E1.fp(r['cheap_mean'])} / {E1.fp(r['cheap_median'])}", f"{E1.fp(r['rich_mean'])} / {E1.fp(r['rich_median'])}",
-                            f"{E1.fp(r['spread_mean'])} ({E1.fp(r['spread_mean_rw'])}, {E1.fpct(r['spread_mean_pct'])})", f"{E1.fp(r['spread_median'])} ({E1.fpct(r['spread_median_pct'])})", E1.fp(r["both_mean"])] for _, r in PR[PR["pair"] == p].iterrows()]) for p in ORDER}
+    def per_win(key, fig) -> str:
+        return f"<div class='card per-win' data-titles='{html.escape(json.dumps(titles[key]), quote=True)}'>{E1.html_fig(fig)}</div>"
+    tab_prof = {p + ZW.SEP + w: E1.tbl(["horizon", "z bucket", "periods (episodes)", "cheaper: mean / median", "richer: mean / median", "spread: mean (random walks, pct)", "spread: median (pct)", "both legs: mean"],
+                          [[f"{r['horizon']} {'wk' if ZW.WIN[w][2] == 'W' else 'd'}", r["bucket"], f"{r['weeks']} ({r['episodes']})", f"{E1.fp(r['cheap_mean'])} / {E1.fp(r['cheap_median'])}", f"{E1.fp(r['rich_mean'])} / {E1.fp(r['rich_median'])}",
+                            f"{E1.fp(r['spread_mean'])} ({E1.fp(r['spread_mean_rw'])}, {E1.fpct(r['spread_mean_pct'])})", f"{E1.fp(r['spread_median'])} ({E1.fpct(r['spread_median_pct'])})", E1.fp(r["both_mean"])]
+                           for _, r in PRW[(PRW["window"] == w) & (PRW["pair"] == p)].iterrows()]) for w, _, _, _ in ZW.WINDOWS for p in ORDER}
     dur_rows = [[r["test"], nice(r["pair"]), f"{r['first']} → {r['last']}", r["closed"], f"{r['per_year']:.1f}", E1.f2(r["median_days"], 0), E1.f2(r["mean_days"], 0), r["longest_days"], r["over_52"], (f"{r['open']} ({r['open_days']} days so far)" if r["open"] else "0")] for _, r in DUR.iterrows()]
     dur_tbl = E1.tbl(["test", "pair", "data window", "closed trades", "trades a year", "median days", "mean days", "longest", "held over 52 weeks", "open at the end"], dur_rows)
     tab_days = {p: E1.tbl(["entered", "exited", "days", "decision weeks", "exit", "extra"], [[t["entry_trade"], t["exit_trade"], t["days_held"], t["weeks_held"], t["exit_reason"], E1.fp(t["extra"])]
@@ -434,16 +524,16 @@ def main():
     opts = "".join(f"<option value='{html.escape(p, quote=True)}'{' selected' if p == DEFAULT_PAIR else ''}>{nice(p)}</option>" for p in ORDER)
     H = [E1.PAGE_HEAD.replace("__CSS__", E1.CSS).replace("<title>Ratio cycles</title>", "<title>Trade conditions</title>"),
          "<header class='bar'><div class='bar-inner'><b>E03 · trade conditions</b><span class='tag'>EXPLORATORY</span>",
-         f"<label>Pair <select id='pair'>{opts}</select></label><button id='theme' type='button'>Dark</button></div></header><main>",
+         f"<label>Pair <select id='pair'>{opts}</select></label>{ZW.select_html()}<button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>When does the ratio switch work?</h1>",
          f"<p>Two descriptions, made after the ±1 sd ratio-band switch was locked, run and refuted (T02, T03). <b>A.</b> Every week, the ratio's z-score (the ±1 sd band in units of its sd) is bucketed and the next 4, 13 and 26 weeks' returns of the <b>cheaper</b> leg (the one that has lagged) and the <b>richer</b> leg are shown, against {D:,} random paths of the ratio that keep the two legs' common movement real. "
          f"<b>B.</b> Every closed trade of {MAIN} — the rule with <b>no maximum hold</b>: a trade lasts until the ratio is back at its trailing mean — at the reference setting (window {WIN}, exit {EXIT}, 20.8 bps) carries the market's condition at its entry and during it; conditions are compared between good trades (the held leg beat the peer, fill to fill) and bad ones, against {P:,} permutations of the outcomes within each pair. "
          f"Generated {audit['run_date']} from the approved data of 2026-11-12 and {MAIN}'s evidence (run {audits[MAIN]['run_date']}). <b>Description, not a finding</b>: a condition that goes with good trades here is a candidate for a pre-registered test, not a rule.</p>",
          f"<div class='card'><p style='margin:4px 0'><b>Against chance:</b> Part A {nA} of {len(A_p)} percentiles are notable (about {0.1 * len(A_p):.0f} would be by chance); Part B {nB} of {len(B_p)} (about {0.1 * len(B_p):.0f}). "
          f"Conditions at entry use data up to the entry decision only ({PIT[0]} cut checks, {len(PIT[1])} violations); conditions during the trade are hindsight by definition.</p></div>",
-         "<h2>A · What each leg does next, by how stretched the ratio is</h2><p class='note'>Pick the pair at the top. Bars: the mean forward return of the cheaper leg, the richer leg and their difference (the spread: what holding the cheaper leg earns against the richer one, before costs). The grey mark is the spread on the random walks (median, 5th–95th); a blue bar outside the grey range is notable. Weeks overlap, so the episode count in the table is the honest sample size.</p>",
+         "<h2>A · What each leg does next, by how stretched the ratio is</h2><p class='note'>Pick the pair at the top. Bars: the mean forward return of the cheaper leg, the richer leg and their difference (the spread: what holding the cheaper leg earns against the richer one, before costs). The grey mark is the spread on the random walks (median, 5th–95th); a blue bar outside the grey range is notable. Weeks overlap, so the episode count in the table is the honest sample size. <b>The z window dropdown at the top</b> switches Part A between the 52-week band and shorter weekly and daily windows (daily: daily closes, horizons of 20, 65 and 130 trading days, daily random walks).</p>",
          per_pair("prof", figs["prof"], tab_prof, first=True),
-         "<div class='card'>" + E1.html_fig(figs["h_prof"]) + "</div>",
+         per_win("h_prof", figs["h_prof"]),
          "<h2>B · The market's condition at each trade</h2><p class='note'>The trades on the chosen pair, over the two legs (no maximum hold). Hover a marker for the trade's outcome and the market at its entry.</p>",
          per_pair("tl", figs["tl"], tab_tl),
          "<h3>How many trades, and how long each one lasted</h3><p class='note'>The trades on the chosen pair, with no maximum hold: each one lasts until the ratio is back at its trailing mean (or is still open at the end). The table under the chart has every pair.</p>",
