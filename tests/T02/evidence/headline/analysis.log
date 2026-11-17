@@ -1,0 +1,154 @@
+### 4.0 Worked example · gates · null check
+
+**One decision (N100|SC100, window 52, exit E1).** On 2007-03-02 the plain ratio N100 ÷ SC100 closed at 1.1790 against a trailing-52-week mean of 1.2246 and sd 0.0316: below mean − 1 sd, so N100 is the lagging leg → target A. The trade happened on 2007-03-05 at fills N100 3474.97 / SC100 2905.26; cost 0.001018 of NAV. The position closed on the decision of 2007-03-23 (exit: back at the mean), traded 2007-03-26: the held leg returned +7.21% fill to fill against the peer's +3.12% — extra +4.09%.
+
+**One path.** NAV 1.000 on 2006-10-20 → 4.451 on 2026-08-28: CAGR 7.81%, worst fall -71.5%.
+
+**One draw (N-A, draw 0).** The same 36 trade spells scattered at random: CAGR 12.12%. **One ranking.** The strategy's 7.81% sits at the 8.8th percentile of 2,000 draws (p = 0.913); the null's median is 9.97%, edge -2.16%.
+
+| gate | result | evidence |
+|---|---|---|
+| V1 independent verifier | PASS | band on P_a / P_b (audit: plain); 100 nav files, 61230 comparisons, 0 failures; corrupted copies caught |
+| V2 no look-ahead | PASS | 13,831,938 point-in-time checks, 0 violations |
+| V3 null held its promise | PASS | 400,000 draws checked, 0 with different counts |
+| V4 regression | PASS | always-neutral sleeve = 50/50 buy-and-hold closed form: yes; T01 reproduced by the changed engine (final NAV, CAGR, max dd within 1e-9): 600 of 600 rows of tests/T01/evidence/headline/summary.csv |
+
+**Null check.** Every one of the 400,000 draws kept the strategy's number of spells, switches and weeks in each state (measured, not assumed): yes.
+
+### 4.1 Headline — reference setting (exit E1, window 52, 20.8 bps), the six index pairs
+
+| pair | round trips | weeks | reportable | CAGR | N-A median | edge | pct N-A | p | C1 | max dd | N-A median dd | C2 | pct N-B | p N-B | C3 | MDE (pp/yr) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| N100 ÷ MC100 | 35 | 1037 | yes | 11.4% | 11.5% | -0.1% | 43.5 | 0.565 | FAIL | -64.6% | -65.2% | PASS | 33.8 | 0.662 | FAIL | 2.5 |
+| N100 ÷ SC100 | 36 | 1037 | yes | 7.8% | 10.0% | -2.2% | 8.8 | 0.913 | FAIL | -71.5% | -69.8% | FAIL | 9.8 | 0.902 | FAIL | 4.5 |
+| N100 ÷ Micro250 | 7 | 201 | yes | 12.3% | 15.2% | -2.9% | 25.9 | 0.741 | FAIL | -24.1% | -22.4% | FAIL | 24.8 | 0.757 | FAIL | 11.4 |
+| MC100 ÷ SC100 | 43 | 1037 | yes | 10.5% | 11.3% | -0.8% | 20.9 | 0.791 | FAIL | -76.9% | -74.3% | FAIL | 19.9 | 0.801 | FAIL | 2.7 |
+| MC100 ÷ Micro250 | 9 | 201 | yes | 20.2% | 22.5% | -2.4% | 21.5 | 0.785 | FAIL | -24.8% | -23.8% | FAIL | 24.5 | 0.758 | FAIL | 8.3 |
+| SC100 ÷ Micro250 | 6 | 201 | yes | 23.0% | 22.6% | 0.4% | 61.1 | 0.389 | FAIL | -26.2% | -26.3% | PASS | 50.2 | 0.508 | FAIL | 4.3 |
+
+C1 (CAGR ≥ 95th pct of N-A): 0 of 6 · C2 (drawdown shallower than N-A median): 2 of 6 · C3 (CAGR ≥ 95th pct of N-B): 0 of 6 · needed 4. **H1 FAIL · H2 FAIL.**
+
+Beside C1, for the second ratio form tried on this window (T02.md §2 Multiplicity): CAGR ≥ the 97.5th pct of N-A in 0 of 6 (a statement that the plain form works needs 4).
+
+Gold pairs, same setting (reported, not counted):
+
+| pair | round trips | reportable | CAGR | pct N-A | max dd | N-A median dd | pct N-B |
+|---|---|---|---|---|---|---|---|
+| N100 ÷ GoldMCX | 21 | yes | 11.4% | 22.3 | -37.4% | -21.5% | 20.4 |
+| MC100 ÷ GoldMCX | 19 | yes | 14.4% | 29.1 | -38.2% | -30.3% | 24.8 |
+| SC100 ÷ GoldMCX | 19 | yes | 10.4% | 17.5 | -55.5% | -42.8% | 16.2 |
+| Micro250 ÷ GoldMCX | 7 | yes | 20.9% | 18.7 | -20.7% | -20.2% | 22.9 |
+
+### 4.2 Comparators (context, not pass marks) — reference setting
+
+- **N100 ÷ MC100** (2006-10-20 → 2026-08-28): strategy 11.4% / -64.6% · 50/50 buy-and-hold 12.5% / -65.7% · 50/50 rebalanced 12.3% · hold N100 10.4% / -61.5% · hold MC100 14.0% / -69.6% · hold SC100 — / — · hold Micro250 — / — · hold GoldMCX — / — (CAGR / max drawdown)
+- **N100 ÷ SC100** (2006-10-20 → 2026-08-28): strategy 7.8% / -71.5% · 50/50 buy-and-hold 10.3% / -70.0% · 50/50 rebalanced 10.5% · hold N100 10.4% / -61.5% · hold MC100 — / — · hold SC100 10.1% / -77.5% · hold Micro250 — / — · hold GoldMCX — / — (CAGR / max drawdown)
+- **N100 ÷ Micro250** (2022-10-28 → 2026-08-28): strategy 12.3% / -24.1% · 50/50 buy-and-hold 18.3% / -22.5% · 50/50 rebalanced 17.4% · hold N100 9.0% / -17.5% · hold MC100 — / — · hold SC100 — / — · hold Micro250 25.9% / -28.5% · hold GoldMCX — / — (CAGR / max drawdown)
+- **MC100 ÷ SC100** (2006-10-20 → 2026-08-28): strategy 10.5% / -76.9% · 50/50 buy-and-hold 12.4% / -73.5% · 50/50 rebalanced 12.1% · hold N100 — / — · hold MC100 14.0% / -69.6% · hold SC100 10.1% / -77.5% · hold Micro250 — / — · hold GoldMCX — / — (CAGR / max drawdown)
+- **MC100 ÷ Micro250** (2022-10-28 → 2026-08-28): strategy 20.2% / -24.8% · 50/50 buy-and-hold 23.3% / -23.4% · 50/50 rebalanced 23.3% · hold N100 — / — · hold MC100 20.5% / -21.3% · hold SC100 — / — · hold Micro250 25.9% / -28.5% · hold GoldMCX — / — (CAGR / max drawdown)
+- **SC100 ÷ Micro250** (2022-10-28 → 2026-08-28): strategy 23.0% / -26.2% · 50/50 buy-and-hold 23.5% / -26.2% · 50/50 rebalanced 23.4% · hold N100 — / — · hold MC100 — / — · hold SC100 20.9% / -25.4% · hold Micro250 25.9% / -28.5% · hold GoldMCX — / — (CAGR / max drawdown)
+- **N100 ÷ GoldMCX** (2015-10-30 → 2026-08-28): strategy 11.4% / -37.4% · 50/50 buy-and-hold 14.9% / -19.6% · 50/50 rebalanced 15.0% · hold N100 11.0% / -38.1% · hold MC100 — / — · hold SC100 — / — · hold Micro250 — / — · hold GoldMCX 17.8% / -21.4% (CAGR / max drawdown)
+- **MC100 ÷ GoldMCX** (2015-10-30 → 2026-08-28): strategy 14.4% / -38.2% · 50/50 buy-and-hold 16.8% / -20.2% · 50/50 rebalanced 17.6% · hold N100 — / — · hold MC100 15.7% / -49.4% · hold SC100 — / — · hold Micro250 — / — · hold GoldMCX 17.8% / -21.4% (CAGR / max drawdown)
+- **SC100 ÷ GoldMCX** (2015-10-30 → 2026-08-28): strategy 10.4% / -55.5% · 50/50 buy-and-hold 15.6% / -25.0% · 50/50 rebalanced 16.5% · hold N100 — / — · hold MC100 — / — · hold SC100 13.0% / -65.1% · hold Micro250 — / — · hold GoldMCX 17.8% / -21.4% (CAGR / max drawdown)
+- **Micro250 ÷ GoldMCX** (2022-10-28 → 2026-08-28): strategy 20.9% / -20.7% · 50/50 buy-and-hold 30.4% / -14.6% · 50/50 rebalanced 31.3% · hold N100 — / — · hold MC100 — / — · hold SC100 — / — · hold Micro250 25.9% / -28.5% · hold GoldMCX 34.4% / -18.0% (CAGR / max drawdown)
+
+### 4.3 How much evidence, and the MDE
+
+Independent observations are round trips, not weeks: N100 ÷ MC100 35 round trips over 1037 weeks, N100 ÷ SC100 36 round trips over 1037 weeks, N100 ÷ Micro250 7 round trips over 201 weeks, MC100 ÷ SC100 43 round trips over 1037 weeks, MC100 ÷ Micro250 9 round trips over 201 weeks, SC100 ÷ Micro250 6 round trips over 201 weeks.
+
+Next to every FAIL above, the smallest edge the test could have seen (2.8 × the null's sd of CAGR): N100 ÷ MC100 undetectable below 2.5 pp a year, N100 ÷ SC100 undetectable below 4.5 pp a year, N100 ÷ Micro250 undetectable below 11.4 pp a year, MC100 ÷ SC100 undetectable below 2.7 pp a year, MC100 ÷ Micro250 undetectable below 8.3 pp a year, SC100 ÷ Micro250 undetectable below 4.3 pp a year. A FAIL means 'too small to see', not 'nothing there'.
+
+Per-trade diagnostic (descriptive only): the held leg's fill-to-fill return minus the peer's over each hold, reference setting:
+
+| pair | trades | held beat peer | mean extra | median extra | sum | worst | best | touches ignored |
+|---|---|---|---|---|---|---|---|---|
+| N100 ÷ MC100 | 34 | 58.8% | -0.3% | 2.2% | -10.4% | -12.7% | 8.2% | 440 |
+| N100 ÷ SC100 | 35 | 60.0% | -1.7% | 1.8% | -61.1% | -31.5% | 11.8% | 440 |
+| N100 ÷ Micro250 | 6 | 66.7% | -5.3% | 2.4% | -31.8% | -40.4% | 10.0% | 94 |
+| MC100 ÷ SC100 | 42 | 61.9% | -0.7% | 1.8% | -27.6% | -17.6% | 6.6% | 395 |
+| MC100 ÷ Micro250 | 8 | 62.5% | -2.4% | 1.7% | -19.2% | -21.5% | 4.0% | 90 |
+| SC100 ÷ Micro250 | 5 | 40.0% | 0.0% | -0.8% | 0.1% | -5.0% | 4.7% | 68 |
+| N100 ÷ GoldMCX | 20 | 65.0% | -3.7% | 3.0% | -73.7% | -41.8% | 15.3% | 245 |
+| MC100 ÷ GoldMCX | 19 | 57.9% | -3.1% | 1.0% | -59.1% | -40.4% | 19.0% | 250 |
+| SC100 ÷ GoldMCX | 19 | 52.6% | -6.0% | 2.6% | -114.2% | -48.6% | 24.2% | 258 |
+| Micro250 ÷ GoldMCX | 7 | 57.1% | -10.7% | 5.7% | -75.2% | -60.5% | 13.1% | 92 |
+
+### 4.4 Robustness
+
+**R1 — costs** (reference window and exit; the decisions are the same, the numbers and the null change). Percentile of the strategy's CAGR on N-A:
+
+| pair | CAGR @ 0 bps | pct @ 0 | CAGR @ 20.8 bps | pct @ 20.8 | CAGR @ 50 bps | pct @ 50 |
+|---|---|---|---|---|---|---|
+| N100 ÷ MC100 | 11.8% | 43.8 | 11.4% | 43.5 | 10.8% | 43.5 |
+| N100 ÷ SC100 | 8.2% | 8.8 | 7.8% | 8.8 | 7.2% | 8.6 |
+| N100 ÷ Micro250 | 12.7% | 26.1 | 12.3% | 25.9 | 11.7% | 25.9 |
+| MC100 ÷ SC100 | 11.0% | 20.9 | 10.5% | 20.9 | 9.8% | 20.8 |
+| MC100 ÷ Micro250 | 20.8% | 21.6 | 20.2% | 21.5 | 19.4% | 21.4 |
+| SC100 ÷ Micro250 | 23.5% | 61.2 | 23.0% | 61.1 | 22.5% | 61.0 |
+
+**R2 / R3 — windows and exits** (20.8 bps). Percentile of CAGR on N-A, with the number of round trips; a cell with fewer than 4 round trips is not reportable (—):
+
+| pair | E1 W26 | E1 W52 | E1 W104 | E2 W26 | E2 W52 | E2 W104 |
+|---|---|---|---|---|---|---|
+| N100 ÷ MC100 | 55.1 (54 rt, dd shallower) | 43.5 (35 rt, dd shallower) | 24.5 (22 rt, dd shallower) | 39.5 (43 rt, dd shallower) | 41.4 (34 rt, dd deeper) | 35.2 (21 rt, dd shallower) |
+| N100 ÷ SC100 | 34.0 (60 rt, dd deeper) | 8.8 (36 rt, dd deeper) | 18.3 (20 rt, dd deeper) | 60.9 (49 rt, dd deeper) | 3.4 (29 rt, dd deeper) | 30.6 (19 rt, dd deeper) |
+| N100 ÷ Micro250 | 40.9 (15 rt, dd deeper) | 25.9 (7 rt, dd deeper) | — | 52.9 (13 rt, dd deeper) | 37.0 (5 rt, dd deeper) | — |
+| MC100 ÷ SC100 | 59.4 (61 rt, dd deeper) | 20.9 (43 rt, dd deeper) | 45.8 (26 rt, dd deeper) | 78.1 (49 rt, dd deeper) | 22.3 (34 rt, dd deeper) | 71.8 (22 rt, dd deeper) |
+| MC100 ÷ Micro250 | 29.4 (12 rt, dd deeper) | 21.5 (9 rt, dd deeper) | — | 27.9 (10 rt, dd deeper) | 13.6 (7 rt, dd deeper) | — |
+| SC100 ÷ Micro250 | 44.9 (11 rt, dd shallower) | 61.1 (6 rt, dd shallower) | — | 75.4 (11 rt, dd shallower) | 54.1 (6 rt, dd deeper) | — |
+
+Exit E2 on the pre-named criteria: C1 0 of 6, C2 0 of 6, C3 0 of 6 (E1 is the deciding exit).
+
+**R4 — sub-periods** (descriptive; reference setting; CAGR of the strategy vs 50/50 buy-and-hold, and max drawdown):
+
+| pair | 2006–2015 | 2016–2019 | 2020–2023 | 2024–2026 |
+|---|---|---|---|---|
+| N100 ÷ MC100 | 9.5% vs 10.7% · dd -65% vs -66% | 6.2% vs 8.3% · dd -23% vs -20% | 22.9% vs 22.5% · dd -39% vs -39% | 9.1% vs 10.1% · dd -17% vs -20% |
+| N100 ÷ SC100 | 6.6% vs 8.3% · dd -72% vs -70% | 2.9% vs 6.5% · dd -37% vs -25% | 14.5% vs 20.1% · dd -45% vs -41% | 9.5% vs 8.1% · dd -20% vs -21% |
+| N100 ÷ Micro250 | — | — | 22.6% vs 37.8% · dd -9% vs -13% | 7.8% vs 10.4% · dd -24% vs -23% |
+| MC100 ÷ SC100 | 8.5% vs 9.8% · dd -77% vs -74% | 0.8% vs 3.9% · dd -43% vs -37% | 24.5% vs 27.7% · dd -47% vs -43% | 11.9% vs 12.2% · dd -23% vs -22% |
+| MC100 ÷ Micro250 | — | — | 42.2% vs 48.7% · dd -11% vs -13% | 11.3% vs 13.2% · dd -25% vs -23% |
+| SC100 ÷ Micro250 | — | — | 49.0% vs 52.2% · dd -14% vs -14% | 12.8% vs 12.3% · dd -26% vs -26% |
+
+**R5 — gold pairs**: in 4.1 above.
+
+### 4.5 Multiplicity
+
+6 decision settings per pair (2 exits × 3 windows), at 3 cost levels; the reference was fixed by position before the run. The best-looking setting per pair, judged at the 98th percentile of its own null:
+
+| pair | settings tried | best setting | its pct N-A | passes 98th |
+|---|---|---|---|---|
+| N100 ÷ MC100 | 6 | E1 W26 | 55.1 | no |
+| N100 ÷ SC100 | 6 | E2 W26 | 60.9 | no |
+| N100 ÷ Micro250 | 6 | E2 W26 | 52.9 | no |
+| MC100 ÷ SC100 | 6 | E2 W26 | 78.1 | no |
+| MC100 ÷ Micro250 | 6 | E1 W26 | 29.4 | no |
+| SC100 ÷ Micro250 | 6 | E2 W26 | 75.4 | no |
+
+### 4.6 T02 against T01 (descriptive — no claims)
+
+Reference setting (exit E1, window 52, 20.8 bps); T01 = band on ln(P_a ÷ P_b), run `headline` of 2026-11-12; T02 = band on P_a ÷ P_b; the same decision weeks, nulls and seeds. Index pairs first, then the gold pairs. A difference here is description, not a test: the T01 and T02 percentiles are not compared with each other by any criterion.
+
+| pair | decision weeks | weeks in a different state | round trips T01 | round trips T02 | entries same week and leg | entries T01 only | entries T02 only | CAGR T01 | CAGR T02 | pct N-A T01 | pct N-A T02 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| N100 ÷ MC100 | 1037 | 7 | 34 | 35 | 34 | 2 | 2 | 11.3% | 11.4% | 38.9 | 43.5 |
+| N100 ÷ SC100 | 1037 | 6 | 36 | 36 | 34 | 3 | 3 | 7.8% | 7.8% | 8.3 | 8.8 |
+| N100 ÷ Micro250 | 201 | 0 | 7 | 7 | 7 | 0 | 0 | 12.3% | 12.3% | 25.9 | 25.9 |
+| MC100 ÷ SC100 | 1037 | 17 | 41 | 43 | 41 | 0 | 2 | 10.3% | 10.5% | 14.4 | 20.9 |
+| MC100 ÷ Micro250 | 201 | 0 | 9 | 9 | 9 | 0 | 0 | 20.2% | 20.2% | 21.5 | 21.5 |
+| SC100 ÷ Micro250 | 201 | 0 | 6 | 6 | 6 | 0 | 0 | 23.0% | 23.0% | 61.1 | 61.1 |
+| N100 ÷ GoldMCX | 566 | 23 | 22 | 21 | 20 | 3 | 1 | 12.5% | 11.4% | 37.8 | 22.3 |
+| MC100 ÷ GoldMCX | 566 | 3 | 19 | 19 | 19 | 0 | 0 | 14.2% | 14.4% | 26.6 | 29.1 |
+| SC100 ÷ GoldMCX | 566 | 8 | 19 | 19 | 17 | 2 | 2 | 9.9% | 10.4% | 14.5 | 17.5 |
+| Micro250 ÷ GoldMCX | 201 | 0 | 7 | 7 | 7 | 0 | 0 | 20.9% | 20.9% | 18.7 | 18.7 |
+
+### 4.7 Verdict table
+
+| criterion | needed | got | result |
+|---|---|---|---|
+| C1 CAGR ≥ 95th pct of N-A (E1, W52, 20.8 bps) | 4 of 6 | 0 | FAIL |
+| C2 drawdown shallower than N-A median | 4 of 6 | 2 | FAIL |
+| C3 CAGR ≥ 95th pct of N-B | 4 of 6 | 0 | FAIL |
+| **H1 timing** (C1 and C2) | | | **FAIL** |
+| **H2 leg choice** (C3) | | | **FAIL** |
+| beside C1: CAGR ≥ 97.5th pct of N-A (two forms tried; not part of H1) | 4 of 6 | 0 | not reached |

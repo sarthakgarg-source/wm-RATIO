@@ -19,13 +19,12 @@ a second exit, at the opposite band).
 6. An independent verifier that imports nothing from the engine must agree, and must fail on a corrupted copy.
 7. If any gate fails, stop: read nothing, fix it, rerun into a new evidence folder.
 8. No person's name anywhere in the repo — code, comments, docs, commits (write "the review of <date>", "the desk").
-9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S02, M01, D11 (+ 2 open).
+9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S03, M02, D11 (+ 2 open).
 
-**Current test:** T02 (tests/T02/), **DRAFT** — T01 with the band drawn on the plain ratio P_a ÷ P_b instead of
-ln(P_a ÷ P_b) (the request of 2026-11-13). §1–§3 of T02.md are written but not frozen: review them, run
-`python tests/T02/check_prereg.py --freeze`, commit, then `bash tests/T02/run.sh`. T01 stays COMPLETE and reproducible
-(`bash tests/T01/run.sh`); the shared engine takes `--test T01 | T02`, which fixes the ratio form. The next tests proposed
-in T01 §7 (written there as T02–T04) take the next free numbers, from T03.
+**Current test:** none open. T02 (tests/T02/) is **COMPLETE** — T01 with the band drawn on the plain ratio P_a ÷ P_b
+instead of ln(P_a ÷ P_b) (the request of 2026-11-13); locked 2026-11-17, run `headline` the same day. T01 stays COMPLETE and
+reproducible (`bash tests/T01/run.sh`); the shared engine takes `--test T01 | T02`, which fixes the ratio form. The next free
+test number is T03 (candidates in T02.md §7).
 
 **Layout**
 ```
@@ -33,8 +32,8 @@ data/        raw files (read-only), data_review.py → DATA_REVIEW.md, APPROVED_
 analysis/    approved_data.py (the boundary), ratio_engine.py (engine + nulls), verify_ratio.py (independent checker)
 tests/T01/   PLAN.md, T01.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py,
              report.py, check_page.py, null_blocks.py (blocks vs spells in the null), T01_results.html, evidence/<run>/
-tests/T02/   PLAN.md, T02.md (§1–3 DRAFT), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
-             check_page.py; evidence/<run>/ (with t01_regression/ for gate V4b) after the run
+tests/T02/   PLAN.md, T02.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
+             check_page.py, T02_results.html, evidence/<run>/ (with t01_regression/ for gate V4b)
 tests/       check_names.py (hygiene: no person's name; names from WM_REDACT_NAMES in the git-ignored .env)
 explore/     EXPLORATORY studies — description, never findings, never quoted as evidence for a rule:
              E01_ratio_cycles/ (E01.md design; cycles.py → out/E01_cycles.html, E01_results.md, CSVs) — cyclicality of
@@ -46,7 +45,15 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              E02_ratio_segments/ (E02.md design; segments.py → out/E02_segments.html, E02_results.md, CSVs) — HINDSIGHT
              segmentation of the daily ratios with the desk's market-segregation method (scipy prominence → peak-to-peak
              regression), trend in % a year, grid of settings, cross-checked against E01 (2026-11-16); disclosed in T02.md §2
+             E03_trade_conditions/ (E03.md design; conditions.py → out/E03_conditions.html, E03_results.md, CSVs) — after T01
+             and T02 ran: forward returns of the cheaper / richer leg by z bucket against E01's random walks, and the market's
+             condition at each T01 / T02 trade (correlation, market regime, volatility, entry depth and speed) related to the
+             trade's outcome with within-pair permutation nulls (2026-11-17)
 ```
+
+**Result of T02 (run `headline`, 2026-11-17):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 (4 needed). The plain-ratio
+band gives the same verdict as the log band: **REFUTED at the MDE** (2.5–11.4 pp/yr), F-RA-S03; the two forms make the same
+decision in at least 95.9% of weeks on every pair (F-RA-M02). Page tests/T02/T02_results.html.
 
 **Result of T01 (run `headline`, 2026-11-12):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 (4 needed). The ±1 sd first-touch
 long-only switch with exit at the mean is **REFUTED at the MDE** (2.6–11.4 pp/yr) on the six index pairs; E2 fails the same

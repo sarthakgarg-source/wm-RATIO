@@ -9,5 +9,5 @@
 | 5 design locked | done 2026-11-17 | §1–§3 frozen (`check_prereg.py --freeze`) and committed before the first run; §2 discloses E01 (2026-11-13, z-score added 2026-11-17) and E02 (2026-11-16), all before the lock. 2026-11-13: exploratory study E01 (ratio cycles) looked at the plain ratios before the lock; disclosed in §2 "What I already saw" |
 | 6 engine | done 2026-11-13 | analysis/ratio_engine.py: `--test T01 / T02` fixes the form; T01 rerun (0 draws) reproduces all 600 rows of T01's headline summary.csv exactly, and decisions.csv, trades.csv, trade_extras.csv identically |
 | 7 verifier | done 2026-11-13 | analysis/verify_ratio.py `--ratio log / plain`; on the T01 rerun: 100 nav files, 61,230 comparisons, 0 failures, both corruptions caught; refuses a run whose audit names the other form. Plain path smoke-tested with 0 draws, output discarded (exit codes only; see T02.md §2) |
-| 8 run + gates | started 2026-11-17 | `bash tests/T02/run.sh` (run `headline`, 2,000 draws) |
-| 9–11 results, findings, page | not started | |
+| 8 run + gates | done 2026-11-17 | run `headline`, 2,000 draws: V1 (0 failures in 61,230 comparisons), V2, V3, V4a and V4b (600 of 600 T01 rows) all PASS; check_page 0 failures |
+| 9–11 results, findings, page | done 2026-11-17 | §4 generated; §5 F-RA-S03 (REFUTED) and F-RA-M02, §6, §7 written from tables.json; T02_results.html. Follow-up exploration: explore/E03_trade_conditions/ |
