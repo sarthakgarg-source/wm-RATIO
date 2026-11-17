@@ -6,8 +6,8 @@ B. The market's condition at the entry of every T03 trade (window 52, exit E1, 2
 
     python explore/E03_trade_conditions/conditions.py [--draws 2000] [--perms 2000]
 
-Run only after T03's run finished (locked and run). Part B used T01/T02's capped trades until 2026-11-17 (git c7a4dae); since then
-T03's, with no 26-week cap (E03.md, dated note). Not a finding and not a test of any rule.
+Run only after T03's run finished (locked and run). Part B uses T03's trades: the rule with no maximum hold.
+Not a finding and not a test of any rule.
 """
 import argparse
 import html
@@ -156,7 +156,7 @@ def trade_rows(test, px, series, zall, mkt):
         idx = wk.index[(wk.index > ed) & (wk.index < xt)]
         rows.append({"test": test, "pair": pair, "pool": "gold" if GOLD in pair else "index", "entry_decision": ed.date().isoformat(), "entry_trade": et.date().isoformat(), "exit_trade": xt.date().isoformat(),
                      "held": tr["held"], "held_leg": held_leg, "peer_leg": peer_leg, "extra": float(tr["extra"]), "held_ret": float(tr["held_ret"]), "peer_ret": float(tr["peer_ret"]), "good": bool(tr["extra"] > 0),
-                     "weeks_held": int(len(dd)), "days_held": int((xt - et).days), "exit_reason": "mean" if "back at the mean" in reason else ("cap" if "max hold" in reason else "other"),
+                     "weeks_held": int(len(dd)), "days_held": int((xt - et).days), "exit_reason": "mean" if "back at the mean" in reason else "other",
                      "hold": "up to 13 weeks" if len(dd) <= 13 else ("14–52 weeks" if len(dd) <= 52 else "over 52 weeks"), "month": int(ed.month),
                      "corr26": float(cc["corr26"]), "corr52": float(cc["corr52"]), "mkt52": float(mkt.asof(ed) / mkt.asof(ed - pd.Timedelta(days=364)) - 1), "mkt_dd": float(mkt.asof(ed) / mkt[:ed].max() - 1),
                      "vol_held": float(cc["vol_a"] if A else cc["vol_b"]), "vol_peer": float(cc["vol_b"] if A else cc["vol_a"]), "vol_ratio": float(cc["vol_ratio"]), "band_width": float(cc["band_width"]),
@@ -436,7 +436,7 @@ def main():
          "<header class='bar'><div class='bar-inner'><b>E03 · trade conditions</b><span class='tag'>EXPLORATORY</span>",
          f"<label>Pair <select id='pair'>{opts}</select></label><button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>When does the ratio switch work?</h1>",
-         f"<p>Two descriptions, made after T01, T02 and T03 were locked and run (all REFUTED). <b>A.</b> Every week, the ratio's z-score (the ±1 sd band in units of its sd) is bucketed and the next 4, 13 and 26 weeks' returns of the <b>cheaper</b> leg (the one that has lagged) and the <b>richer</b> leg are shown, against {D:,} random paths of the ratio that keep the two legs' common movement real. "
+         f"<p>Two descriptions, made after the ±1 sd ratio-band switch was locked, run and refuted (T02, T03). <b>A.</b> Every week, the ratio's z-score (the ±1 sd band in units of its sd) is bucketed and the next 4, 13 and 26 weeks' returns of the <b>cheaper</b> leg (the one that has lagged) and the <b>richer</b> leg are shown, against {D:,} random paths of the ratio that keep the two legs' common movement real. "
          f"<b>B.</b> Every closed trade of {MAIN} — the rule with <b>no maximum hold</b>: a trade lasts until the ratio is back at its trailing mean — at the reference setting (window {WIN}, exit {EXIT}, 20.8 bps) carries the market's condition at its entry and during it; conditions are compared between good trades (the held leg beat the peer, fill to fill) and bad ones, against {P:,} permutations of the outcomes within each pair. "
          f"Generated {audit['run_date']} from the approved data of 2026-11-12 and {MAIN}'s evidence (run {audits[MAIN]['run_date']}). <b>Description, not a finding</b>: a condition that goes with good trades here is a candidate for a pre-registered test, not a rule.</p>",
          f"<div class='card'><p style='margin:4px 0'><b>Against chance:</b> Part A {nA} of {len(A_p)} percentiles are notable (about {0.1 * len(A_p):.0f} would be by chance); Part B {nB} of {len(B_p)} (about {0.1 * len(B_p):.0f}). "
@@ -456,9 +456,9 @@ def main():
          + "<details><summary>Per pair</summary>" + E1.tbl(["test", "pair", "closed trades", "share good", "median extra", "mean extra", "median weeks held"], [[r["test"], nice(r["pair"]), r["n"], f"{r['good'] * 100:.0f}%", E1.fp(r["median_extra"]), E1.fp(r["mean_extra"]), f"{r['weeks']:.0f}"] for _, r in PP.iterrows()]) + "</details></div>",
          "<h2>Method and limits</h2><div class='card'><ul>"
          "<li><b>Part A.</b> z = (plain ratio − trailing 52-week mean) ÷ trailing sd (E01's). Cheaper leg = a when z < 0, b when z > 0. Forward returns are close to close on decision weeks, simple, no costs or fills. Random paths: E01's (the point-in-time residuals with the same random signs plus the expanding drift, after the real 52-week warm-up); with M = ½(ln a + ln b) kept real, the random legs are exp(M ± ½ ln r*), so only the legs' relative movement is random. The window starts after the warm-up. Percentile = (paths below + ½ ties) ÷ paths.</li>"
-         f"<li><b>Part B.</b> Trades from tests/T0x/evidence/{RUN}/trade_extras.csv at window {WIN}, exit {EXIT}; no maximum hold; open trades left out of the outcome statistics ({n_open[MAIN]}; their days so far are on the length chart). Extra = held leg's fill-to-fill return − the peer's (T01 §4.3), no cost. Conditions at the entry decision's close from the pair's decision-week series and N100's daily closes (N100 is the market for every pair); |z| is the depth; breadth = the share of the ten ratios whose own z is beyond ±1 that week. During: entry fill to exit fill (N100), and the decision weeks held (correlation and volatility need {MIN_DURING} weeks or more).</li>"
+         f"<li><b>Part B.</b> Trades from tests/T0x/evidence/{RUN}/trade_extras.csv at window {WIN}, exit {EXIT}; no maximum hold; open trades left out of the outcome statistics ({n_open[MAIN]}; their days so far are on the length chart). Extra = held leg's fill-to-fill return − the peer's (T02.md §4.3), no cost. Conditions at the entry decision's close from the pair's decision-week series and N100's daily closes (N100 is the market for every pair); |z| is the depth; breadth = the share of the ten ratios whose own z is beyond ±1 that week. During: entry fill to exit fill (N100), and the decision weeks held (correlation and volatility need {MIN_DURING} weeks or more).</li>"
          f"<li><b>Null.</b> Within each pair the trades' extras (for the rank correlation) or good/bad labels (for the medians) are shuffled {P:,} times, seed default_rng([{SEED_PERM}, test_id, pool_id]); the trades are ranked within their pair before pooling for the correlation. The null asks only whether the condition is associated with the outcome. Whether a filtered rule beats random timing is a new pre-registered test.</li>"
-         f"<li><b>Limits.</b> {n_idx.min()}–{n_idx.max()} closed trades per index pair; many correlated conditions; gold pairs from 2015 with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); Micro250 pairs from 2022. The design was written before the first run (explore/E03_trade_conditions/E03.md); Part B moved from T01/T02's capped trades to T03's uncapped trades on 2026-11-17 (dated note there).</li></ul></div>",
+         f"<li><b>Limits.</b> {n_idx.min()}–{n_idx.max()} closed trades per index pair; many correlated conditions; gold pairs from 2015 with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); Micro250 pairs from 2022. The design was written before the first run (explore/E03_trade_conditions/E03.md).</li></ul></div>",
          "</main>", "<script>" + E1.JS.replace("__DIV_LIGHT__", json.dumps(E1.DIV_LIGHT)).replace("__DIV_DARK__", json.dumps(E1.DIV_DARK)).replace("e01-pair", "e03-pair") + "</script></body></html>"]
     out = os.path.join(OUT, "E03_conditions.html"); open(out, "w", encoding="utf-8").write("\n".join(H))
     print(f"done in {time.time() - t0:.0f}s; notable A {nA} of {len(A_p)}, B {nB} of {len(B_p)} → {out}")

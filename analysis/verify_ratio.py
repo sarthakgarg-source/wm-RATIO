@@ -1,15 +1,11 @@
 """
 Gate V1: an independent recomputation of every NAV in an evidence folder. Imports NOTHING from ratio_engine.py.
 
-    python analysis/verify_ratio.py tests/T01/evidence/<run> --max-hold 26             # verify; exit 1 on any mismatch or if nothing compared
-    python analysis/verify_ratio.py tests/T01/evidence/<run> --max-hold 26 --selftest  # also prove it fails on corrupted copies
-    python analysis/verify_ratio.py tests/T02/evidence/<run> --ratio plain --max-hold 26 --selftest   # T02: the band on P_a / P_b, 26-week cap
-    python analysis/verify_ratio.py tests/T03/evidence/<run> --ratio plain --max-hold none --selftest   # T03: no cap
+    python analysis/verify_ratio.py tests/T02/evidence/<run>              # verify; exit 1 on any mismatch or if nothing compared
+    python analysis/verify_ratio.py tests/T02/evidence/<run> --selftest   # also prove it fails on corrupted copies (T03 the same)
 
---ratio (log | plain, default log = T01) is the form the band is drawn on, taken from the test's locked design via run.sh,
-not from the engine: the decisions are re-derived with it, and an audit.json that names another form is a failure.
---max-hold (a number of decision weeks, or none; default none, the standard from T03 on; T01 / T02 pass 26) is the cap, from the design; an
-audit.json whose max_hold_weeks differs is a failure, and the decisions are re-derived with the design's cap, not the audit's.
+The band is drawn on the plain ratio P_a / P_b and a trade ends only at its exit rule (no maximum hold), as the locked
+designs say; the decisions are re-derived that way, and an audit.json that names another form is a failure.
 
 Route: the engine holds UNITS and values them; this program holds VALUE WEIGHTS and compounds daily returns from the closes,
 with the fill-to-close legs on trade days. The two agree only if the fills, the costs, the calendar and the decisions are
@@ -36,18 +32,13 @@ def pair_days(px, pair, start):
     return pd.DataFrame({"ca": px[a].loc[idx, "close"], "cb": px[b].loc[idx, "close"], "fa": px[a].loc[idx, "fill"], "fb": px[b].loc[idx, "fill"]}, index=idx)
 
 
-def redo_decisions(days: pd.DataFrame, window: int, exit_rule: str, max_hold, sd_mult: float, min_obs_frac: float, ratio: str = "log") -> pd.DataFrame:
-    """The state machine, written again from the design text (T01.md / T02.md §3 step 4–5), on the weekly closes.
-    ratio: 'log' → the band on ln(ca / cb) (T01); 'plain' → on ca / cb (T02, T03). max_hold None = no cap (T03)."""
+def redo_decisions(days: pd.DataFrame, window: int, exit_rule: str, sd_mult: float, min_obs_frac: float) -> pd.DataFrame:
+    """The state machine, written again from the design text (T02.md / T03.md §3 steps 4–5), on the weekly closes: the band
+    on ca / cb; a trade ends only at its exit rule."""
     iso = days.index.isocalendar(); key = (iso["year"].astype(int) * 100 + iso["week"].astype(int)).values
     last = ~pd.Series(key, index=days.index).duplicated(keep="last")
     wk = days[last.values]; dates = wk.index
-    if ratio == "log":
-        lr = (np.log(wk["ca"]) - np.log(wk["cb"])).to_numpy()
-    elif ratio == "plain":
-        lr = (wk["ca"] / wk["cb"]).to_numpy()
-    else:
-        raise ValueError(f"unknown ratio form {ratio!r}")
+    lr = (wk["ca"] / wk["cb"]).to_numpy()
     min_obs = int(round(min_obs_frac * window)); state = "N"; since = None; prev = None; out = []
     for i in range(len(lr)):
         if i + 1 < min_obs:
@@ -59,7 +50,7 @@ def redo_decisions(days: pd.DataFrame, window: int, exit_rule: str, max_hold, sd
                 back = x >= m if exit_rule == "E1" else pos == 1
             else:
                 back = x <= m if exit_rule == "E1" else pos == -1
-            if back or (max_hold is not None and (i - since) >= max_hold):
+            if back:
                 state = "N"; since = None
         if state == "N":
             if pos == -1 and prev in (0, 1):
@@ -130,14 +121,14 @@ def stats(nav):
     return nav.iloc[-1] ** (365.25 / days) - 1, float((nav / nav.cummax() - 1).min()), float(nav.iloc[-1])
 
 
-def verify(ev: str, quiet=False, ratio: str = "log", max_hold=None) -> tuple[int, int]:
+def verify(ev: str, quiet=False) -> tuple[int, int]:
     audit = json.load(open(os.path.join(ev, "audit.json")))
     px = load_daily(); summ = pd.read_csv(os.path.join(ev, "summary.csv")); decs = pd.read_csv(os.path.join(ev, "decisions.csv"), parse_dates=["date"])
     compared = 0; failures = []
-    if audit.get("ratio", "log") != ratio:                       # T01's audit predates the key; T01 is the log form
-        failures.append(f"audit.json says the band was drawn on the {audit.get('ratio', 'log')} ratio, the design says {ratio}")
-    if audit.get("max_hold_weeks") != max_hold:
-        failures.append(f"audit.json says the maximum hold was {audit.get('max_hold_weeks')} weeks, the design says {max_hold}")
+    if audit.get("ratio") != "plain":
+        failures.append(f"audit.json says the band was drawn on the {audit.get('ratio')} ratio, the design says plain")
+    if audit.get("max_hold_weeks") is not None:
+        failures.append(f"audit.json says there was a maximum hold of {audit.get('max_hold_weeks')} weeks, the design has none")
     navs = sorted(f for f in os.listdir(ev) if f.startswith("nav_") and f.endswith(".csv"))
     for f in navs:
         stem = f[4:-4]; parts = stem.split("_"); cost = float(parts[-1]); ex = parts[-2]; window = int(parts[-3]); pair = "|".join(parts[:-3]).replace("_", "|")
@@ -145,7 +136,7 @@ def verify(ev: str, quiet=False, ratio: str = "log", max_hold=None) -> tuple[int
         days = pair_days(px, pair, audit["start"]["gold"] if GOLD in pair else audit["start"]["index"])
         eng = pd.read_csv(os.path.join(ev, f), index_col=0, parse_dates=True)
         d_eng = decs[(decs["pair"] == pair) & (decs["window"] == window) & (decs["exit"] == ex)].set_index("date")
-        d_me = redo_decisions(days, window, ex, max_hold, audit["sd_mult"], audit["min_obs_frac"], ratio)
+        d_me = redo_decisions(days, window, ex, audit["sd_mult"], audit["min_obs_frac"])
         banded = d_me[d_me["mean"].notna()]
         # 1. the decisions themselves
         same = d_eng["state_after"].reindex(d_me.index).fillna("?").to_numpy()
@@ -183,32 +174,25 @@ def verify(ev: str, quiet=False, ratio: str = "log", max_hold=None) -> tuple[int
     return compared, len(failures)
 
 
-def selftest(ev: str, ratio: str = "log", max_hold=None) -> bool:
+def selftest(ev: str) -> bool:
     """The verifier must FAIL on a corrupted copy: (a) one decision flipped; (b) one NAV file scaled by 1.001."""
     ok = True
     with tempfile.TemporaryDirectory() as tmp:
         cp = os.path.join(tmp, "a"); shutil.copytree(ev, cp)
         d = pd.read_csv(os.path.join(cp, "decisions.csv")); i = d.index[d["state_after"] == "A"][0]; d.loc[i, "state_after"] = "B"; d.to_csv(os.path.join(cp, "decisions.csv"), index=False)
-        _, nf = verify(cp, quiet=True, ratio=ratio, max_hold=max_hold); print(f"selftest (a) flipped decision: {nf} failure(s) — {'caught' if nf else 'NOT CAUGHT'}"); ok &= nf > 0
+        _, nf = verify(cp, quiet=True); print(f"selftest (a) flipped decision: {nf} failure(s) — {'caught' if nf else 'NOT CAUGHT'}"); ok &= nf > 0
     with tempfile.TemporaryDirectory() as tmp:
         cp = os.path.join(tmp, "b"); shutil.copytree(ev, cp)
         f = sorted(x for x in os.listdir(cp) if x.startswith("nav_"))[0]; n = pd.read_csv(os.path.join(cp, f), index_col=0); n["nav"] *= 1.001; n.to_csv(os.path.join(cp, f))
-        _, nf = verify(cp, quiet=True, ratio=ratio, max_hold=max_hold); print(f"selftest (b) scaled NAV: {nf} failure(s) — {'caught' if nf else 'NOT CAUGHT'}"); ok &= nf > 0
+        _, nf = verify(cp, quiet=True); print(f"selftest (b) scaled NAV: {nf} failure(s) — {'caught' if nf else 'NOT CAUGHT'}"); ok &= nf > 0
     return ok
 
 
 if __name__ == "__main__":
     ev = sys.argv[1]
-    RATIO = sys.argv[sys.argv.index("--ratio") + 1] if "--ratio" in sys.argv else "log"
-    if RATIO not in ("log", "plain"):
-        sys.exit(f"verify: --ratio must be log or plain, not {RATIO!r}")
-    MH = sys.argv[sys.argv.index("--max-hold") + 1] if "--max-hold" in sys.argv else "none"
-    if not (MH == "none" or MH.isdigit()):
-        sys.exit(f"verify: --max-hold must be a number of weeks or none, not {MH!r}")
-    MAXH = None if MH == "none" else int(MH)
-    compared, nf = verify(ev, ratio=RATIO, max_hold=MAXH)
+    compared, nf = verify(ev)
     if "--selftest" in sys.argv:
-        if not selftest(ev, RATIO, MAXH):
+        if not selftest(ev):
             sys.exit("verifier selftest FAILED: a corrupted copy passed")
     if compared == 0:
         sys.exit("verify: nothing compared")

@@ -82,7 +82,7 @@ def how_it_works(wb, n_weeks, first, last):
         ("→", "Turning points: the list Excel finds, with each swing's length and size, matched row by row against the Python script (explore/E01_ratio_cycles/cycles.py). The cell at the top says whether they agree."),
         ("", ""),
         ("", "COLOURS: blue text = inputs (data, settings); black = formulas; yellow = settings you can change (warm-up, half-year length, toy threshold)."),
-        ("", "Source of the data: data/index_ohlcv_all.csv through analysis/approved_data.load_daily() (fingerprint-checked), on the pair's common calendar as T01/T02 use it."),
+        ("", "Source of the data: data/index_ohlcv_all.csv through analysis/approved_data.load_daily() (fingerprint-checked), on the pair's common calendar as T02/T03 use it."),
     ]
     for i, (a, b) in enumerate(lines, start=3):
         ws[f"A{i}"] = a; ws[f"B{i}"] = b; ws[f"B{i}"].alignment = WRAP
@@ -152,7 +152,7 @@ def real(wb, wk, ca, cb):
     n = len(wk); r0 = 8; rN = r0 + n - 1; WARM, HALF = "$B$3", "$B$4"
     ws["A1"] = f"Real data: {E.nice(PAIR)}, weekly, {wk.index[0].date()} → {wk.index[-1].date()}"; ws["A1"].font = F_TITLE
     ws["A2"] = ("Source: data/index_ohlcv_all.csv via analysis/approved_data.load_daily() (fingerprint-checked); closes on the last trading day of each ISO week on the pair's "
-                "common calendar, exactly as T01/T02 and E01 use them. Blue = input; every other number is a formula."); ws["A2"].font = F_NOTE
+                "common calendar, exactly as T02/T03 and E01 use them. Blue = input; every other number is a formula."); ws["A2"].font = F_NOTE
     ws["A3"] = "Warm-up (weeks)"; ws["B3"] = E.BURN; ws["A4"] = "Weeks in a half-year (threshold = sd × √ of this)"; ws["B4"] = E.H_WEEKS
     for c in ("B3", "B4"):
         ws[c].font = F_INPUT; ws[c].fill = IN_FILL

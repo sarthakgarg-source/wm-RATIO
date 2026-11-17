@@ -1,10 +1,10 @@
 # wm-RATIO — ratio analysis of the NSE index pairs, under the research playbook
 
-**The question (T01):** on an index pair, does holding only the leg that has lagged — from the first week the ratio
-ln(a ÷ b) is more than one standard deviation below (or above) its trailing-52-week mean, until the ratio is back at
-the mean — earn more and fall less than the same trades scattered at random? Long-only switch; six index pairs decide,
-four gold pairs reported. Not a z-score rule: a band on the ratio, entry at the first touch, exit at the mean (and, as
-a second exit, at the opposite band).
+**The question (T02, T03):** on an index pair, does holding only the leg that has lagged — from the first week the plain
+ratio a ÷ b is more than one standard deviation below (or above) its trailing-52-week mean, until the ratio is back at
+the mean, however long that takes — earn more and fall less than the same trades scattered at random? Long-only switch;
+six index pairs decide, four gold pairs reported. A band on the ratio, entry at the first touch, exit at the mean (and,
+as a second exit, at the opposite band); **no maximum hold**.
 
 **Hard rules** (RESEARCH_PLAYBOOK.md, kept here in short):
 1. Tests read data only through `analysis/approved_data.py`; the file must be on `data/APPROVED_DATA.md` and its
@@ -19,53 +19,38 @@ a second exit, at the opposite band).
 6. An independent verifier that imports nothing from the engine must agree, and must fail on a corrupted copy.
 7. If any gate fails, stop: read nothing, fix it, rerun into a new evidence folder.
 8. No person's name anywhere in the repo — code, comments, docs, commits (write "the review of <date>", "the desk").
-9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S05, M02, D11 (+ 2 open).
+9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S06, M02, D11 (+ 2 open).
 
-**Current test:** none open. T03 (tests/T03/) is **COMPLETE** — T02 with no maximum hold (the 26-week cap removed; the
-request of 2026-11-17), pass mark the 98th percentile. T01, T02 and T03 are COMPLETE and reproducible; the shared engine
-takes `--test T01 | T02 | T03`, which fixes the ratio form and the cap. The next free test number is T04 (candidates in
-T03.md §7).
-**No maximum hold from T03 on:** the 26-week cap exists only in T01's and T02's locked designs (their run.sh pass
-`--max-hold 26` to the verifier); the engine's and the verifier's default is no cap, and E03 uses T03's uncapped trades.
+**Current tests:** T02 and T03 are the same rule under two numbers (the desk's choice of 2026-11-17): T02 judged at the
+95th percentile, T03 at the 98th. On 2026-11-17 the earlier log-ratio test and the time limit on each trade were removed
+from the repository at the desk's request; both are in git under the tag `archive/2026-11-17-earlier-versions`. T02 is
+rerun under its rewritten design; T03's evidence of 2026-11-17 is re-analysed under its rewritten text. Each test's gate
+V4b checks that the two make the same decisions and the same numbers. The next free test number is T04.
 
 **Layout**
 ```
 data/        raw files (read-only), data_review.py → DATA_REVIEW.md, APPROVED_DATA.md, check_approved_data.py
 analysis/    approved_data.py (the boundary), ratio_engine.py (engine + nulls), verify_ratio.py (independent checker)
-tests/T01/   PLAN.md, T01.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py,
-             report.py, check_page.py, null_blocks.py (blocks vs spells in the null), T01_results.html, evidence/<run>/
 tests/T02/   PLAN.md, T02.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
-             check_page.py, T02_results.html, evidence/<run>/ (with t01_regression/ for gate V4b)
-tests/T03/   PLAN.md, T03.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
-             check_page.py, T03_results.html, evidence/<run>/ (with t02_regression/ and t01_regression/ for gates V4b, V4c)
+             check_page.py, T02_results.html, evidence/<run>/
+tests/T03/   the same files for T03 (the same rule at the 98th percentile)
 tests/       check_names.py (hygiene: no person's name; names from WM_REDACT_NAMES in the git-ignored .env)
 explore/     EXPLORATORY studies — description, never findings, never quoted as evidence for a rule:
              E01_ratio_cycles/ (E01.md design; cycles.py → out/E01_cycles.html, E01_results.md, CSVs) — cyclicality of
              the ten ratio series against sign-flipped random walks, point-in-time (expanding drift and threshold, counted
-             look-ahead check) (2026-11-13), plus the z-score of the ratio (T02's band in units of its trailing-52-week sd;
-             description only, nothing about what follows a band touch) (2026-11-17); disclosed in T02.md §2.
-             peaks_troughs_xlsx.py → out/E01_peaks_troughs_explained.xlsx:
-             the peak/trough rule as live Excel formulas (toy example + N100 ÷ SC100), matched against cycles.py
+             look-ahead check) (2026-11-13), plus the z-score of the ratio (the band in units of its trailing-52-week sd;
+             description only) (2026-11-17). peaks_troughs_xlsx.py → out/E01_peaks_troughs_explained.xlsx: the peak/trough
+             rule as live Excel formulas (toy example + N100 ÷ SC100), matched against cycles.py
              E02_ratio_segments/ (E02.md design; segments.py → out/E02_segments.html, E02_results.md, CSVs) — HINDSIGHT
              segmentation of the daily ratios with the desk's market-segregation method (scipy prominence → peak-to-peak
-             regression), trend in % a year, grid of settings, cross-checked against E01 (2026-11-16); disclosed in T02.md §2
+             regression), trend in % a year, grid of settings, cross-checked against E01 (2026-11-16)
              E03_trade_conditions/ (E03.md design; conditions.py → out/E03_conditions.html, E03_results.md, CSVs) — forward
              returns of the cheaper / richer leg by z bucket against E01's random walks, and the market's condition at each
-             T03 trade (no cap; correlation, market regime, volatility, entry depth and speed) related to the trade's outcome
-             with within-pair permutation nulls, plus trade counts and lengths over time (2026-11-17)
+             T03 trade (correlation, market regime, volatility, entry depth and speed) related to the trade's outcome with
+             within-pair permutation nulls, plus trade counts and lengths over time (2026-11-17)
 ```
 
-**Result of T03 (run `headline`, 2026-11-17):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 at the 98th percentile.
-Removing the 26-week cap does not rescue the rule: **REFUTED** (F-RA-S04). The trades the cap had cut ran on for a median of
-about a year and ended worse on average (F-RA-S05, descriptive). Page tests/T03/T03_results.html.
+**Results:** pending — T02's rerun and T03's re-analysis under the rewritten designs (2026-11-17).
 
-**Result of T02 (run `headline`, 2026-11-17):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 (4 needed). The plain-ratio
-band gives the same verdict as the log band: **REFUTED at the MDE** (2.5–11.4 pp/yr), F-RA-S03; the two forms make the same
-decision in at least 95.9% of weeks on every pair (F-RA-M02). Page tests/T02/T02_results.html.
-
-**Result of T01 (run `headline`, 2026-11-12):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 (4 needed). The ±1 sd first-touch
-long-only switch with exit at the mean is **REFUTED at the MDE** (2.6–11.4 pp/yr) on the six index pairs; E2 fails the same
-criteria. Findings F-RA-S01, F-RA-S02, F-RA-M01 in tests/T01/T01.md §5; page tests/T01/T01_results.html.
-
-`evidence/headline/` keeps every draw (`draws_*.csv`, 35 MB) in git; the daily NAV files (`nav_*.csv`, 31 MB) are regenerated by
+`evidence/headline/` keeps every draw (`draws_*.csv`) in git; the daily NAV files (`nav_*.csv`) are regenerated by
 `run.sh` and git-ignored.

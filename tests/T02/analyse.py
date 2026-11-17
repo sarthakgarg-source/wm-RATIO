@@ -1,6 +1,6 @@
 """
 Step 8–9: the gates, then every table of T02.md §4, in the playbook's order, read ONLY from evidence: this test's
-evidence/<run>/ and, for gate V4b and the descriptive T02-vs-T01 table, T01's evidence/headline/ (read, never written).
+evidence/<run>/ and, for gate V4b, T03's evidence/headline/ (the same rule under the other test number; read, never written).
 Writes evidence/<run>/analysis.log (markdown) and evidence/<run>/tables.json (every number, for fill_writeup / report / check_page).
 
     python tests/T02/analyse.py [run-name]          # default: headline
@@ -17,9 +17,8 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE))
 RUN = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "headline"
 EV = os.path.join(HERE, "evidence", RUN)
-T01_EV = os.path.join(ROOT, "tests", "T01", "evidence", "headline")      # T01's evidence: V4b baseline and the side-by-side
+OTHER = "T03"; OTHER_EV = os.path.join(ROOT, "tests", OTHER, "evidence", "headline")   # the same rule under the other test number: gate V4b
 PASS_PCT, DD_RULE, BEST_PCT = 95.0, "median", 98.0
-PASS_PCT_2F = 97.5                                                         # C1 with two ratio forms tried (0.05 / 2)
 NEED = 4
 PERIODS = (("2006–2015", "2006-01-01", "2015-12-31"), ("2016–2019", "2016-01-01", "2019-12-31"), ("2020–2023", "2020-01-01", "2023-12-31"), ("2024–2026", "2024-01-01", "2026-12-31"))
 L = []; T = {}
@@ -36,13 +35,28 @@ def md(df: pd.DataFrame, floatfmt=None) -> str:
     return "\n".join(rows)
 
 
+def identity(ev: str, other: str) -> tuple:
+    """The other test number runs the same rule: its decisions (every pair, window, exit and week) and its strategy rows
+    (final NAV, CAGR, max drawdown at every cost) must equal this run's within 1e-9."""
+    if not (os.path.exists(os.path.join(other, "summary.csv")) and os.path.exists(os.path.join(other, "decisions.csv"))):
+        return False, (0, 0), False
+    key = ["pair", "window", "exit", "cost_bps", "series"]
+    a = pd.read_csv(os.path.join(ev, "summary.csv")); b = pd.read_csv(os.path.join(other, "summary.csv")); a = a[a["series"] == "strategy"]; b = b[b["series"] == "strategy"]
+    mg = a.merge(b, on=key, suffixes=("", "_o")); same = np.ones(len(mg), dtype=bool)
+    for c in ("final_nav", "cagr", "maxdd"):
+        same &= np.isclose(mg[c].to_numpy(), mg[c + "_o"].to_numpy(), rtol=0, atol=1e-9)
+    da = pd.read_csv(os.path.join(ev, "decisions.csv")); db = pd.read_csv(os.path.join(other, "decisions.csv"))
+    dsame = bool(len(da) == len(db) and (da[["pair", "window", "exit", "date", "state_after"]].astype(str).to_numpy() == db[["pair", "window", "exit", "date", "state_after"]].astype(str).to_numpy()).all())
+    return bool(len(mg) == len(a) == len(b) > 0 and same.all() and dsame), (int(same.sum()), len(a)), dsame
+
+
 def pct(v): return "—" if pd.isna(v) else f"{v:.1%}"
 def p1(v): return "—" if pd.isna(v) else f"{v:.1f}"
 def p3(v): return "—" if pd.isna(v) else f"{v:.3f}"
 
 
 def main():
-    audit = json.load(open(os.path.join(EV, "audit.json"))); summ = pd.read_csv(os.path.join(EV, "summary.csv")); ref = audit["reference"]
+    audit = json.load(open(os.path.join(EV, "audit.json"), encoding="utf-8")); summ = pd.read_csv(os.path.join(EV, "summary.csv")); ref = audit["reference"]
     decs = pd.read_csv(os.path.join(EV, "decisions.csv"), parse_dates=["date"]); trades = pd.read_csv(os.path.join(EV, "trades.csv"), parse_dates=["decision_date", "trade_date"]); extras = pd.read_csv(os.path.join(EV, "trade_extras.csv"))
     deciding = audit["deciding_pairs"]; gold_pairs = [p for p in audit["pairs"] if p not in deciding]
     strat = summ[summ["series"] == "strategy"].copy()
@@ -73,28 +87,22 @@ def main():
     v3 = audit["null_counts"]["draws_mismatched"] == 0 and audit["null_counts"]["draws_checked"] > 0 and all_ok
     an = summ[summ["series"] == "always_neutral"].set_index(["pair", "window", "exit", "cost_bps"])["final_nav"]; bh = summ[summ["series"] == "5050_buyhold"].set_index(["pair", "window", "exit", "cost_bps"])["final_nav"]
     v4a = bool(np.allclose(an.reindex(bh.index).to_numpy(), bh.to_numpy(), atol=1e-9))
-    # V4b: the changed engine run with T01's form (evidence/<run>/t01_regression/, 0 draws) must reproduce T01's headline summary
-    reg = os.path.join(EV, "t01_regression", "summary.csv"); base = os.path.join(T01_EV, "summary.csv"); v4b = False; reg_rows = (0, 0)
-    if os.path.exists(reg) and os.path.exists(base):
-        rs = pd.read_csv(reg); bs = pd.read_csv(base); key = ["pair", "window", "exit", "cost_bps", "series"]; mg = bs.merge(rs, on=key, suffixes=("_t01", ""))
-        same = np.ones(len(mg), dtype=bool)
-        for c in ("final_nav", "cagr", "maxdd"):
-            same &= np.isclose(mg[c + "_t01"].to_numpy(), mg[c].to_numpy(), rtol=0, atol=1e-9)
-        reg_rows = (int(same.sum()), len(bs)); v4b = bool(len(mg) == len(bs) and len(bs) > 0 and same.all())
-    v1 = v1 and audit.get("ratio") == "plain"                                  # the run used the locked form (the verifier also checks)
-    gates = {"V1": v1, "V2": v2, "V3": v3, "V4": v4a and v4b}; T["gates"] = {**gates, "verify": m.groups() if m else None, "pit_checks": audit["pit_checks"], "pit_violations": len(audit["pit_violations"]), "null_draws_checked": audit["null_counts"]["draws_checked"], "null_draws_mismatched": audit["null_counts"]["draws_mismatched"], "v4_regression": v4b, "v4_rows": reg_rows, "ratio": audit.get("ratio"), "ratio_formula": audit.get("ratio_formula")}
+    # V4b: the same rule run under the other test number gives the same decisions and the same strategy numbers
+    v4b, reg_rows, dec_same = identity(EV, OTHER_EV)
+    v1 = v1 and audit.get("ratio") == "plain" and audit.get("max_hold_weeks") is None   # the locked form, no maximum hold (the verifier also checks)
+    gates = {"V1": v1, "V2": v2, "V3": v3, "V4": v4a and v4b}; T["gates"] = {**gates, "verify": m.groups() if m else None, "pit_checks": audit["pit_checks"], "pit_violations": len(audit["pit_violations"]), "null_draws_checked": audit["null_counts"]["draws_checked"], "null_draws_mismatched": audit["null_counts"]["draws_mismatched"], "v4_regression": v4b, "v4_rows": reg_rows, "v4_decisions_same": dec_same, "other": OTHER, "ratio": audit.get("ratio"), "ratio_formula": audit.get("ratio_formula")}
     say("| gate | result | evidence |"); say("|---|---|---|")
     say(f"| V1 independent verifier | {'PASS' if v1 else 'FAIL'} | band on {audit.get('ratio_formula', '?')} (audit: {audit.get('ratio', '?')}); {m.group(1) if m else '?'} nav files, {m.group(2) if m else '?'} comparisons, {m.group(3) if m else '?'} failures; corrupted copies {'caught' if caught else 'NOT caught'} |")
     say(f"| V2 no look-ahead | {'PASS' if v2 else 'FAIL'} | {audit['pit_checks']:,} point-in-time checks, {len(audit['pit_violations'])} violations |")
     say(f"| V3 null held its promise | {'PASS' if v3 else 'FAIL'} | {audit['null_counts']['draws_checked']:,} draws checked, {audit['null_counts']['draws_mismatched']} with different counts |")
-    say(f"| V4 regression | {'PASS' if gates['V4'] else 'FAIL'} | always-neutral sleeve = 50/50 buy-and-hold closed form: {'yes' if v4a else 'NO'}; T01 reproduced by the changed engine (final NAV, CAGR, max dd within 1e-9): {reg_rows[0]} of {reg_rows[1]} rows of tests/T01/evidence/headline/summary.csv |"); say()
+    say(f"| V4 regression | {'PASS' if gates['V4'] else 'FAIL'} | always-neutral sleeve = 50/50 buy-and-hold closed form: {'yes' if v4a else 'NO'}; the same rule run as {OTHER} (tests/{OTHER}/evidence/headline/): {reg_rows[0]} of {reg_rows[1]} strategy rows equal (final NAV, CAGR, max dd within 1e-9), decisions {'identical' if dec_same else 'DIFFERENT'} |"); say()
     if not all(gates.values()):
         open(os.path.join(EV, "analysis.log"), "w", encoding="utf-8").write("\n".join(L)); json.dump(T, open(os.path.join(EV, "tables.json"), "w", encoding="utf-8"), indent=1, default=str)
         sys.exit("a validity gate failed — stop; read nothing below")
     nd = pd.concat([pd.read_csv(os.path.join(EV, f)).assign(file=f) for f in draws_files]); say(f"**Null check.** Every one of the {len(nd):,} draws kept the strategy's number of spells, switches and weeks in each state (measured, not assumed): {'yes' if nd['counts_ok'].all() else 'NO'}."); say()
 
     # ---------------------------------------------------------------- 4.1 headline
-    say("### 4.1 Headline — reference setting (exit E1, window 52, 20.8 bps), the six index pairs"); say()
+    say("### 4.1 Headline — reference setting (exit E1, window 52, 20.8 bps, no maximum hold), the six index pairs"); say()
     rows = []
     for p in deciding:
         r = R.loc[p]; rep = bool(r["reportable"])
@@ -104,10 +112,9 @@ def main():
     H = pd.DataFrame(rows); T["headline"] = H.to_dict("records")
     say(md(H, lambda c, v: pct(v) if c in ("CAGR", "N-A median", "edge", "max dd", "N-A median dd") else (p1(v) if c in ("pct N-A", "pct N-B", "MDE (pp/yr)") else (p3(v) if c in ("p", "p N-B") else str(v))))); say()
     nC1, nC2, nC3 = (H["C1"] == "PASS").sum(), (H["C2"] == "PASS").sum(), (H["C3"] == "PASS").sum()
-    nC1b = sum(1 for p in deciding if bool(R.loc[p, "reportable"]) and R.loc[p, "NA_pct"] >= PASS_PCT_2F)
-    T["criteria"] = {"C1": int(nC1), "C2": int(nC2), "C3": int(nC3), "need": NEED, "H1": bool(nC1 >= NEED and nC2 >= NEED), "H2": bool(nC3 >= NEED), "C1_two_forms": int(nC1b)}
+    T["criteria"] = {"C1": int(nC1), "C2": int(nC2), "C3": int(nC3), "need": NEED, "H1": bool(nC1 >= NEED and nC2 >= NEED), "H2": bool(nC3 >= NEED)}
     say(f"C1 (CAGR ≥ 95th pct of N-A): {nC1} of 6 · C2 (drawdown shallower than N-A median): {nC2} of 6 · C3 (CAGR ≥ 95th pct of N-B): {nC3} of 6 · needed {NEED}. **H1 {'PASS' if T['criteria']['H1'] else 'FAIL'} · H2 {'PASS' if T['criteria']['H2'] else 'FAIL'}.**")
-    say(); say(f"Beside C1, for the second ratio form tried on this window (T02.md §2 Multiplicity): CAGR ≥ the 97.5th pct of N-A in {nC1b} of 6 (a statement that the plain form works needs {NEED})."); say()
+    say()
     say("Gold pairs, same setting (reported, not counted):"); say()
     rows = [{"pair": p.replace("|", " ÷ "), "round trips": int(R.loc[p, "round_trips"]), "reportable": "yes" if R.loc[p, "reportable"] else "NO", "CAGR": R.loc[p, "cagr"], "pct N-A": R.loc[p, "NA_pct"], "max dd": R.loc[p, "maxdd"], "N-A median dd": R.loc[p, "NA_median_maxdd"], "pct N-B": R.loc[p, "NB_pct"]} for p in gold_pairs]
     G = pd.DataFrame(rows); T["gold"] = G.to_dict("records"); say(md(G, lambda c, v: pct(v) if c in ("CAGR", "max dd", "N-A median dd") else (p1(v) if c.startswith("pct") else str(v)))); say()
@@ -190,30 +197,12 @@ def main():
         rows.append({"pair": p.replace("|", " ÷ "), "settings tried": n_settings, "best setting": f"{b['exit']} W{int(b['window'])}", "its pct N-A": b["NA_pct"], "passes 98th": "yes" if b["NA_pct"] >= BEST_PCT else "no"})
     M = pd.DataFrame(rows); T["multiplicity"] = M.to_dict("records"); say(f"{n_settings} decision settings per pair (2 exits × 3 windows), at 3 cost levels; the reference was fixed by position before the run. The best-looking setting per pair, judged at the 98th percentile of its own null:"); say(); say(md(M, lambda c, v: p1(v) if c == "its pct N-A" else str(v))); say()
 
-    # ---------------------------------------------------------------- 4.6 against T01 (descriptive)
-    say("### 4.6 T02 against T01 (descriptive — no claims)"); say()
-    t1s = pd.read_csv(os.path.join(T01_EV, "summary.csv")); t1d = pd.read_csv(os.path.join(T01_EV, "decisions.csv"), parse_dates=["date"]); t1a = json.load(open(os.path.join(T01_EV, "audit.json")))
-    t1R = t1s[(t1s["series"] == "strategy") & (t1s["window"] == ref["window"]) & (t1s["exit"] == ref["exit"]) & (t1s["cost_bps"] == ref["cost_bps"])].set_index("pair")
-    rows = []
-    for p in deciding + gold_pairs:
-        sel = lambda d: d[(d["pair"] == p) & (d["window"] == ref["window"]) & (d["exit"] == ref["exit"]) & d["mean"].notna()].set_index("date")   # banded weeks only
-        a2, a1 = sel(decs), sel(t1d); idx = a2.index.intersection(a1.index)
-        differ = int((a2.loc[idx, "state_after"] != a1.loc[idx, "state_after"]).sum())
-        ent = lambda d: set((dt, s) for dt, s, r in zip(d.index, d["state_after"], d["reason"].fillna("")) if "enter" in r)
-        e2, e1 = ent(a2), ent(a1)
-        rows.append({"pair": p.replace("|", " ÷ "), "decision weeks": len(idx), "weeks in a different state": differ, "round trips T01": int(t1R.loc[p, "round_trips"]), "round trips T02": int(R.loc[p, "round_trips"]),
-                     "entries same week and leg": len(e1 & e2), "entries T01 only": len(e1 - e2), "entries T02 only": len(e2 - e1),
-                     "CAGR T01": float(t1R.loc[p, "cagr"]), "CAGR T02": float(R.loc[p, "cagr"]), "pct N-A T01": float(t1R.loc[p, "NA_pct"]), "pct N-A T02": float(R.loc[p, "NA_pct"])})
-    V = pd.DataFrame(rows); T["vs_T01"] = V.to_dict("records")
-    say(f"Reference setting (exit {ref['exit']}, window {ref['window']}, {ref['cost_bps']} bps); T01 = band on ln(P_a ÷ P_b), run `headline` of {t1a['run_date']}; T02 = band on P_a ÷ P_b; the same decision weeks, nulls and seeds. Index pairs first, then the gold pairs. A difference here is description, not a test: the T01 and T02 percentiles are not compared with each other by any criterion."); say()
-    say(md(V, lambda c, v: pct(v) if c.startswith("CAGR") else (p1(v) if c.startswith("pct") else str(v)))); say()
-
-    # ---------------------------------------------------------------- 4.7 verdict
-    say("### 4.7 Verdict table"); say()
+    # ---------------------------------------------------------------- 4.6 verdict
+    say("### 4.6 Verdict table"); say()
     say("| criterion | needed | got | result |"); say("|---|---|---|---|")
-    say(f"| C1 CAGR ≥ 95th pct of N-A (E1, W52, 20.8 bps) | {NEED} of 6 | {nC1} | {'PASS' if nC1 >= NEED else 'FAIL'} |"); say(f"| C2 drawdown shallower than N-A median | {NEED} of 6 | {nC2} | {'PASS' if nC2 >= NEED else 'FAIL'} |"); say(f"| C3 CAGR ≥ 95th pct of N-B | {NEED} of 6 | {nC3} | {'PASS' if nC3 >= NEED else 'FAIL'} |")
+    say(f"| C1 CAGR ≥ 95th pct of N-A (E1, W52, 20.8 bps, no maximum hold) | {NEED} of 6 | {nC1} | {'PASS' if nC1 >= NEED else 'FAIL'} |"); say(f"| C2 drawdown shallower than N-A median | {NEED} of 6 | {nC2} | {'PASS' if nC2 >= NEED else 'FAIL'} |"); say(f"| C3 CAGR ≥ 95th pct of N-B | {NEED} of 6 | {nC3} | {'PASS' if nC3 >= NEED else 'FAIL'} |")
     say(f"| **H1 timing** (C1 and C2) | | | **{'PASS' if T['criteria']['H1'] else 'FAIL'}** |"); say(f"| **H2 leg choice** (C3) | | | **{'PASS' if T['criteria']['H2'] else 'FAIL'}** |")
-    say(f"| beside C1: CAGR ≥ 97.5th pct of N-A (two forms tried; not part of H1) | {NEED} of 6 | {nC1b} | {'reached' if nC1b >= NEED else 'not reached'} |"); say()
+    say()
     open(os.path.join(EV, "analysis.log"), "w", encoding="utf-8").write("\n".join(L)); json.dump(T, open(os.path.join(EV, "tables.json"), "w", encoding="utf-8"), indent=1, default=str)
     print("\n".join(L)); print(f"\nwrote {EV}/analysis.log and tables.json")
 

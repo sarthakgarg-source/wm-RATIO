@@ -1,6 +1,6 @@
 """Check J1: every number embedded in the results page (<script id="numbers">) is recomputed here from the evidence files
-directly — summary.csv, the draws files, decisions.csv, trades.csv, trade_extras.csv, t02_regression/ and t01_regression/,
-and T02's evidence/headline/ for the side-by-side and the capped trades — without analyse.py or tables.json.
+directly — summary.csv, the draws files, decisions.csv, trades.csv, trade_extras.csv, and T02's evidence/headline/ for
+gate V4b (the same rule under the other test number) — without analyse.py or tables.json.
     python tests/T03/check_page.py [run-name]        # exit 1 on any mismatch"""
 import json
 import os
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__)); RUN = sys.argv[1] if len(sys.argv) > 1 else "headline"; EV = os.path.join(HERE, "evidence", RUN)
-T01_EV = os.path.join(HERE, "..", "T01", "evidence", "headline"); T02_EV = os.path.join(HERE, "..", "T02", "evidence", "headline")
+OTHER = "T02"; OTHER_EV = os.path.join(HERE, "..", OTHER, "evidence", "headline")
 NEED, PASS_PCT, BEST_PCT = 4, 98.0, 99.0
 
 
@@ -64,59 +64,15 @@ def main():
     if audit.get("ratio") != "plain" or audit.get("max_hold_weeks") is not None:
         exp["V1"] = "FAIL"
     exp["V3"] = "PASS" if audit["null_counts"]["draws_mismatched"] == 0 else "FAIL"; an = summ[summ["series"] == "always_neutral"]["final_nav"].to_numpy(); bh = summ[summ["series"] == "5050_buyhold"]["final_nav"].to_numpy()
-    # V4b / V4c recomputed: the changed engine under T02's and T01's settings against their headline summaries
-    def reg(rdir, bdir):
-        rs = pd.read_csv(os.path.join(rdir, "summary.csv")); bs = pd.read_csv(os.path.join(bdir, "summary.csv")); mg = bs.merge(rs, on=["pair", "window", "exit", "cost_bps", "series"], suffixes=("_base", ""))
-        ok_rows = np.ones(len(mg), dtype=bool)
-        for col in ("final_nav", "cagr", "maxdd"):
-            ok_rows &= np.isclose(mg[col + "_base"].to_numpy(), mg[col].to_numpy(), rtol=0, atol=1e-9)
-        return int(ok_rows.sum()), len(bs), bool(len(mg) == len(bs) > 0 and ok_rows.all())
-    o2, n2, g2 = reg(os.path.join(EV, "t02_regression"), T02_EV); o1, n1, g1 = reg(os.path.join(EV, "t01_regression"), T01_EV)
-    exp["v4_rows_ok"], exp["v4_rows_all"], exp["v4t1_rows_ok"], exp["v4t1_rows_all"] = o2, n2, o1, n1
-    exp["V4"] = "PASS" if (np.allclose(an, bh, atol=1e-9) and g2 and g1) else "FAIL"
+    # V4b recomputed: the other test number's evidence, merged on the decision week and on the pair-setting-cost
+    oa = pd.read_csv(os.path.join(OTHER_EV, "summary.csv")); oa = oa[oa["series"] == "strategy"].set_index(["pair", "window", "exit", "cost_bps"])
+    me = strat.set_index(["pair", "window", "exit", "cost_bps"]); both = me.join(oa, rsuffix="_o", how="inner")
+    ok_rows = (np.abs(both["final_nav"] - both["final_nav_o"]) <= 1e-9) & (np.abs(both["cagr"] - both["cagr_o"]) <= 1e-9) & (np.abs(both["maxdd"] - both["maxdd_o"]) <= 1e-9)
+    od = pd.read_csv(os.path.join(OTHER_EV, "decisions.csv"), parse_dates=["date"]).set_index(["pair", "window", "exit", "date"])["state_after"]
+    md_ = decs.set_index(["pair", "window", "exit", "date"])["state_after"]; dec_same = len(od) == len(md_) and bool((od.reindex(md_.index).astype(str) == md_.astype(str)).all())
+    exp["v4_rows_ok"] = int(ok_rows.sum()); exp["v4_rows_all"] = len(me); exp["v4_dec"] = "identical" if dec_same else "DIFFERENT"
+    exp["V4"] = "PASS" if (np.allclose(an, bh, atol=1e-9) and len(both) == len(me) == len(oa) > 0 and bool(ok_rows.all()) and dec_same) else "FAIL"
     exp["pit_checks"] = audit["pit_checks"]; exp["pit_violations"] = len(audit["pit_violations"]); exp["null_checked"] = audit["null_counts"]["draws_checked"]; exp["null_mismatched"] = audit["null_counts"]["draws_mismatched"]
-    # T03 against T02, from the two tests' evidence files directly
-    t2s = pd.read_csv(os.path.join(T02_EV, "summary.csv")); t2d = pd.read_csv(os.path.join(T02_EV, "decisions.csv"), parse_dates=["date"]); t2x = pd.read_csv(os.path.join(T02_EV, "trade_extras.csv"), parse_dates=["entry_decision", "exit_trade"])
-    t2R = t2s[(t2s["series"] == "strategy") & (t2s["window"] == ref["window"]) & (t2s["exit"] == ref["exit"]) & (t2s["cost_bps"] == ref["cost_bps"])].set_index("pair")
-    t2draws = lambda p: pd.read_csv(os.path.join(T02_EV, f"draws_{p.replace('|', '_')}_{ref['window']}_{ref['exit']}_{ref['cost_bps']:g}.csv")).query("null == 'N-A'")["cagr"]
-    def spells_of(d):  # (start, leg, weeks, open) by run-length encoding of the state column
-        st = d["state_after"].to_numpy(); brk = np.flatnonzero(np.r_[True, st[1:] != st[:-1]]); ends = np.r_[brk[1:], len(st)]
-        return [(d.index[b0], st[b0], int(e0 - b0), bool(e0 == len(st))) for b0, e0 in zip(brk, ends) if st[b0] in ("A", "B")]
-    sp3_all = {}
-    for p in deciding + gold:
-        k = p.replace("|", "_")
-        a3 = decs[(decs["pair"] == p) & (decs["window"] == ref["window"]) & (decs["exit"] == ref["exit"]) & decs["mean"].notna()].set_index("date").sort_index()
-        a2 = t2d[(t2d["pair"] == p) & (t2d["window"] == ref["window"]) & (t2d["exit"] == ref["exit"]) & t2d["mean"].notna()].set_index("date").sort_index(); idx = a3.index.intersection(a2.index)
-        ent3 = a3["reason"].fillna("").str.contains("enter"); ent2 = a2["reason"].fillna("").str.contains("enter")
-        e3 = set(zip(a3.index[ent3], a3["state_after"][ent3])); e2 = set(zip(a2.index[ent2], a2["state_after"][ent2]))
-        s3, s2 = spells_of(a3), spells_of(a2); sp3_all[p] = {(d0, leg): (wk, op) for d0, leg, wk, op in s3}
-        c3 = [wk for _, _, wk, op in s3 if not op]; c2 = [wk for _, _, wk, op in s2 if not op]
-        exp[f"vs_weeks_{k}"] = len(idx); exp[f"vs_differ_{k}"] = int((a3.loc[idx, "state_after"] != a2.loc[idx, "state_after"]).sum()); exp[f"vs_same_{k}"] = len(e2 & e3); exp[f"vs_only2_{k}"] = len(e2 - e3); exp[f"vs_only3_{k}"] = len(e3 - e2)
-        exp[f"vs_rt2_{k}"] = t2R.loc[p, "round_trips"]; exp[f"vs_rt3_{k}"] = R.loc[p, "round_trips"]; exp[f"vs_cagr2_{k}"] = t2R.loc[p, "cagr"]; exp[f"vs_cagr3_{k}"] = R.loc[p, "cagr"]
-        exp[f"vs_pct2_{k}"] = pct_of(t2R.loc[p, "cagr"], t2draws(p))[0]; exp[f"vs_pct3_{k}"] = pct_of(R.loc[p, "cagr"], draws(p).query("null == 'N-A'")["cagr"])[0]
-        exp[f"vs_hold2_{k}"] = float(np.median(c2)) if c2 else float("nan"); exp[f"vs_hold3_{k}"] = float(np.median(c3)) if c3 else float("nan")
-        exp[f"vs_long3_{k}"] = max((wk for _, _, wk, _ in s3), default=0); exp[f"vs_open3_{k}"] = sum(op for *_, op in s3)
-    # T02's capped trades in T03: the T02 exit decision is the last decision before the exit trade; capped = its reason names the max hold
-    x3all = extras[(extras["window"] == ref["window"]) & (extras["exit"] == ref["exit"])].copy(); x3all["entry_decision"] = pd.to_datetime(x3all["entry_decision"])
-    for tag, plist in (("inde", deciding), ("gold", gold)):
-        ncap = nfound = nopen = 0; w3, x2, x3 = [], [], []
-        for p in plist:
-            d2 = t2d[(t2d["pair"] == p) & (t2d["window"] == ref["window"]) & (t2d["exit"] == ref["exit"])].sort_values("date")
-            for _, t in t2x[(t2x["pair"] == p) & (t2x["window"] == ref["window"]) & (t2x["exit"] == ref["exit"]) & (~t2x["open"])].iterrows():
-                if "max hold" not in str(d2[d2["date"] < t["exit_trade"]].iloc[-1]["reason"]):
-                    continue
-                ncap += 1; hit = sp3_all[p].get((t["entry_decision"], t["held"]))
-                if hit is None:
-                    continue
-                nfound += 1; w3.append(hit[0])
-                if hit[1]:
-                    nopen += 1; continue
-                m = x3all[(x3all["pair"] == p) & (x3all["entry_decision"] == t["entry_decision"]) & (x3all["held"] == t["held"])]
-                x2.append(t["extra"]); x3.append(m["extra"].iloc[0])
-        x2, x3 = np.array(x2, float), np.array(x3, float); nan = float("nan")
-        exp.update({f"cap_n_{tag}": ncap, f"cap_found_{tag}": nfound, f"cap_open_{tag}": nopen, f"cap_closed_{tag}": len(x3), f"cap_wk_{tag}": float(np.median(w3)) if w3 else nan, f"cap_long_{tag}": max(w3) if w3 else 0,
-                    f"cap_mx2_{tag}": x2.mean() if len(x2) else nan, f"cap_mx3_{tag}": x3.mean() if len(x3) else nan, f"cap_md2_{tag}": float(np.median(x2)) if len(x2) else nan, f"cap_md3_{tag}": float(np.median(x3)) if len(x3) else nan,
-                    f"cap_better_{tag}": float((x3 > x2).mean()) if len(x3) else nan, f"cap_pos_{tag}": float((x3 > 0).mean()) if len(x3) else nan})
     # compare
     fails = []; checked = 0
     for key, val in NUM.items():
@@ -125,8 +81,6 @@ def main():
         e = exp[key]; checked += 1
         if isinstance(val, str) or isinstance(e, str):
             ok = str(val) == str(e)
-        elif val is None or (isinstance(val, float) and val != val) or float(e) != float(e):
-            ok = (val is None or val != val) and float(e) != float(e)           # both blank (no closed trade)
         else:
             ok = abs(float(val) - float(e)) <= 1e-6 * max(1.0, abs(float(e)))
         if not ok:

@@ -1,7 +1,7 @@
 """
 E01 (EXPLORATORY): cyclicality in the ratio series. Design: explore/E01_ratio_cycles/E01.md (written before the first run).
 Reads the approved data only through analysis/approved_data, on each pair's common calendar and decision weeks exactly as
-T01/T02 build them (analysis.ratio_engine.pair_frame). Writes explore/E01_ratio_cycles/out/:
+T02/T03 build them (analysis.ratio_engine.pair_frame). Writes explore/E01_ratio_cycles/out/:
 E01_cycles.html (the page), E01_results.md (every table), summary.csv, spectrum_bands.csv, variance_ratios.csv,
 seasonality.csv, swings.csv, drift_check.csv (expanding drift removal vs none), audit.json.
 
@@ -648,7 +648,7 @@ def main():
     H = [PAGE_HEAD.replace("__CSS__", CSS), "<header class='bar'><div class='bar-inner'><b>E01 · ratio cycles</b><span class='tag'>EXPLORATORY</span>",
          f"<label>Pair <select id='pair'>{opts}</select></label><button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>Is there cyclicality in the ratio series?</h1>",
-         f"<p>The ten pair ratios P_a ÷ P_b (plain, not logged), weekly, on each pair's common calendar as T01/T02 use it. Every statistic is compared with {D:,} random walks that have the ratio's own week-by-week volatility (each week's change kept, its sign flipped at random), so a pattern any random series would also show is not mistaken for a cycle. Generated {audit['run_date']} from the approved data of 2026-11-12. <b>Description, not a finding</b>: nothing here tests a trading rule; anything that looks usable needs its own pre-registered test.</p>"
+         f"<p>The ten pair ratios P_a ÷ P_b (plain, not logged), weekly, on each pair's common calendar as T02/T03 use it. Every statistic is compared with {D:,} random walks that have the ratio's own week-by-week volatility (each week's change kept, its sign flipped at random), so a pattern any random series would also show is not mistaken for a cycle. Generated {audit['run_date']} from the approved data of 2026-11-12. <b>Description, not a finding</b>: nothing here tests a trading rule; anything that looks usable needs its own pre-registered test.</p>"
          f"<p><b>Point-in-time throughout.</b> At every week, the drift that is removed is the average of the weekly changes <i>before</i> it, and the swing threshold comes from their sd (expanding windows, after a {BURN}-week warm-up). No number from later in the history enters any series, threshold or random walk; the band and the z-score are the trailing 52 weeks. "
          f"Checked, not assumed: each pair's history is cut at 12 dates and everything recomputed from the cut history (the z-score included) must equal the full run up to the cut, with the turning points found on the cut history the first ones of the full run — {PIT[0]} checks, {len(PIT[1])} violations. "
          "The statistics themselves summarise each pair's whole window, as any description of a history does.</p>",
