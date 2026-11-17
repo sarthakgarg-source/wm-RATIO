@@ -1,0 +1,69 @@
+{
+ "run_date": "2026-11-17",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
+ },
+ "test": "T03",
+ "test_run_date": "2026-11-17",
+ "setting": {
+  "window": 52,
+  "exit": "E1",
+  "cost_bps": 20.8
+ },
+ "draws": 2000,
+ "seed": "default_rng([101, pair_id]) (E01's signs)",
+ "checks": {
+  "z_max_abs_diff": 8.548894925297645e-11,
+  "rule_mismatch": [],
+  "rule_trades_matched": 151
+ },
+ "notable": [
+  19,
+  121
+ ],
+ "fill_vs_close": {
+  "N100|MC100": {
+   "corr": 0.9855825945871405,
+   "trades": 25
+  },
+  "N100|SC100": {
+   "corr": 0.9570137899954655,
+   "trades": 26
+  },
+  "N100|Micro250": {
+   "corr": 0.9999620196838699,
+   "trades": 3
+  },
+  "MC100|SC100": {
+   "corr": 0.9732463474028994,
+   "trades": 34
+  },
+  "MC100|Micro250": {
+   "corr": 0.9905991522398818,
+   "trades": 5
+  },
+  "SC100|Micro250": {
+   "corr": 0.9985584704884342,
+   "trades": 3
+  },
+  "N100|GoldMCX": {
+   "corr": 0.9922265893061343,
+   "trades": 13
+  },
+  "MC100|GoldMCX": {
+   "corr": 0.9950980617599066,
+   "trades": 12
+  },
+  "SC100|GoldMCX": {
+   "corr": 0.9915134615560173,
+   "trades": 8
+  },
+  "Micro250|GoldMCX": {
+   "corr": 0.9966657824353833,
+   "trades": 4
+  }
+ },
+ "seconds": 23
+}

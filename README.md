@@ -48,6 +48,9 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              returns of the cheaper / richer leg by z bucket against E01's random walks, and the market's condition at each
              T03 trade (correlation, market regime, volatility, entry depth and speed) related to the trade's outcome with
              within-pair permutation nulls, plus trade counts and lengths over time (2026-11-17)
+             E04_signal_strength/ (E04.md design; strength.py → out/E04_signal.html, E04_results.md, CSVs) — T03's
+             outperformance against 50/50, what follows a band touch, the z-score's information coefficient, and the T03
+             rule run on E01's random walks: signal or mechanics? (2026-11-17)
 ```
 
 **Results (run `headline`, 2026-11-17):** the rule is **REFUTED** at the MDE (2.8–12.1 pp/yr). T02 at the 95th percentile:
