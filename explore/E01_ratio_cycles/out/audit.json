@@ -1,5 +1,5 @@
 {
- "run_date": "2026-11-13",
+ "run_date": "2026-11-17",
  "status": "EXPLORATORY",
  "inputs": {
   "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
@@ -30,9 +30,29 @@
   "random_walks": "the point-in-time residuals with random signs; no demeaning",
   "whole_history_estimates_used": "none",
   "look_ahead_check": {
-   "what": "history cut at 12 dates per pair: estimates up to the cut equal the full run's, turning points are a prefix of the full run's",
-   "checks": 240,
+   "what": "history cut at 12 dates per pair: estimates up to the cut equal the full run's, turning points are a prefix of the full run's, and the z-score equals the full run's (to 1e-12)",
+   "checks": 360,
    "violations": []
+  }
+ },
+ "zscore": {
+  "definition": "z_t = (r_t - mean of the last 52 weekly closes including t) / their sd (n - 1), from week 42: T02's band, z = \u00b11 is its edge",
+  "scope": "description only: nothing about what follows a band touch (no return, no time back to the mean, no hit rate)",
+  "random_paths": "the real warm-up weeks, then each point-in-time residual with the page's random sign plus the expanding drift (the drift check's version B); z on the path's ratio; turning points from the zig-zag on its drift-removed path",
+  "window": "from the end of the warm-up to the last week, as the rest of the page; stretches running at either end are cut there",
+  "tested": [
+   "beyond1",
+   "beyond2",
+   "med_str",
+   "z_peak",
+   "z_trough"
+  ],
+  "checks": {
+   "engine_max_abs_diff": 2.6842972289387035e-11,
+   "running_sums_max_abs_diff": 8.548894925297645e-11,
+   "rebuild_max_rel_diff": 4.440892098500626e-16,
+   "missing_mismatch": [],
+   "engine": "(ratio - mean) / sd from analysis.ratio_engine.decide(plain, window 52); only those columns read"
   }
  },
  "bands_weeks": [
@@ -86,8 +106,8 @@
   95.0
  ],
  "notable_count": [
-  46,
-  231
+  53,
+  281
  ],
  "drift_check": {
   "what": "A = expanding drift removed (the page); B = no drift removal, random walks with the expanding drift added back",
@@ -106,5 +126,5 @@
    "Micro250 \u00f7 GoldMCX VR 26 wk (95.0 \u2192 93.7)"
   ]
  },
- "seconds": 7
+ "seconds": 16
 }

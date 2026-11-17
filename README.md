@@ -39,7 +39,9 @@ tests/       check_names.py (hygiene: no person's name; names from WM_REDACT_NAM
 explore/     EXPLORATORY studies — description, never findings, never quoted as evidence for a rule:
              E01_ratio_cycles/ (E01.md design; cycles.py → out/E01_cycles.html, E01_results.md, CSVs) — cyclicality of
              the ten ratio series against sign-flipped random walks, point-in-time (expanding drift and threshold, counted
-             look-ahead check) (2026-11-13); disclosed in T02.md §2. peaks_troughs_xlsx.py → out/E01_peaks_troughs_explained.xlsx:
+             look-ahead check) (2026-11-13), plus the z-score of the ratio (T02's band in units of its trailing-52-week sd;
+             description only, nothing about what follows a band touch) (2026-11-17); disclosed in T02.md §2.
+             peaks_troughs_xlsx.py → out/E01_peaks_troughs_explained.xlsx:
              the peak/trough rule as live Excel formulas (toy example + N100 ÷ SC100), matched against cycles.py
              E02_ratio_segments/ (E02.md design; segments.py → out/E02_segments.html, E02_results.md, CSVs) — HINDSIGHT
              segmentation of the daily ratios with the desk's market-segregation method (scipy prominence → peak-to-peak
