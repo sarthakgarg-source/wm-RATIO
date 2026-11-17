@@ -77,5 +77,115 @@
    72
   ]
  },
- "seconds": 335
+ "part_B_windows": {
+  "rule": "T03's rule on each z window's band (explore/E01_ratio_cycles/variants.py), decisions weekly, through the engine's book, 20.8 bps",
+  "check_52_week": "the 52-week variant's decisions, NAV and trades equal T03's evidence on every pair, and its trade rows (conditions included) equal the T03 rows",
+  "seed": "default_rng([105, window_id, pool_id]), window_id = the index in ['w52', 'w26', 'w13', 'd250', 'd120', 'd60', 'd20']",
+  "windows": {
+   "w52": {
+    "closed_trades": 144,
+    "open_trades": 7,
+    "notable": [
+     13,
+     72
+    ]
+   },
+   "w26": {
+    "closed_trades": 270,
+    "open_trades": 9,
+    "notable": [
+     21,
+     72
+    ]
+   },
+   "w13": {
+    "closed_trades": 456,
+    "open_trades": 7,
+    "notable": [
+     16,
+     72
+    ]
+   },
+   "d250": {
+    "closed_trades": 139,
+    "open_trades": 7,
+    "notable": [
+     11,
+     72
+    ]
+   },
+   "d120": {
+    "closed_trades": 274,
+    "open_trades": 9,
+    "notable": [
+     19,
+     72
+    ]
+   },
+   "d60": {
+    "closed_trades": 458,
+    "open_trades": 7,
+    "notable": [
+     15,
+     72
+    ]
+   },
+   "d20": {
+    "closed_trades": 1089,
+    "open_trades": 10,
+    "notable": [
+     24,
+     72
+    ]
+   }
+  }
+ },
+ "corr_periods": {
+  "periods": [
+   "cw13",
+   "cw26",
+   "cw52",
+   "cd20",
+   "cd60",
+   "cd120",
+   "cd250"
+  ],
+  "default": "cw52",
+  "seed": "default_rng([106, window_id, pool_id]); cw26 and cw52 reuse corr26 / corr52",
+  "look_ahead_check": {
+   "checks": 120,
+   "violations": []
+  },
+  "notable": {
+   "w52": [
+    1,
+    28
+   ],
+   "w26": [
+    5,
+    28
+   ],
+   "w13": [
+    8,
+    28
+   ],
+   "d250": [
+    3,
+    28
+   ],
+   "d120": [
+    3,
+    28
+   ],
+   "d60": [
+    9,
+    28
+   ],
+   "d20": [
+    5,
+    28
+   ]
+  }
+ },
+ "seconds": 347
 }

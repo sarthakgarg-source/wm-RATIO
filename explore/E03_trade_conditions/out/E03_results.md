@@ -371,3 +371,101 @@ Per pair, bucket and horizon: weeks (episodes), cheaper leg mean / median, riche
 | T03 | MC100 ÷ GoldMCX | 2015-01-16 → 2026-08-28 | 13 | 1.1 | 133 | 260 | 785 | 4 | 0 |
 | T03 | SC100 ÷ GoldMCX | 2015-01-16 → 2026-08-28 | 10 | 0.9 | 448 | 364 | 945 | 6 | 0 |
 | T03 | Micro250 ÷ GoldMCX | 2022-01-14 → 2026-08-28 | 5 | 1.1 | 119 | 246 | 532 | 2 | 0 |
+
+## Part B for every z window — T03's rule on each window's band (the 52-week rows are T03 itself)
+
+Decisions weekly, fills next session, 20.8 bps round trip, no maximum hold; daily windows read the daily z at each decision day. Data windows per pair as in the trade-length table above. Conditions as above, with z, |z|, weeks since z changed sign, band width and breadth taken from the chosen window; 2,000 permutations, seed default_rng([105, window_id, pool_id]).
+
+| z window | pool | closed trades | share good | median extra | mean extra | median weeks held | notable percentiles | notable good − bad differences |
+|---|---|---|---|---|---|---|---|---|
+| 52 weeks | index | 101 | 66% | +2.1% | -2.3% | 17 | 8 of 36 | held − peer, 4 wk before entry: good -3.2% vs bad -2.6% (percentile 5); N100 return during the trade (during): good 1.3% vs bad 18.8% (percentile 0); legs' correlation during the trade (during): good 0.91 vs bad 0.87 (percentile 98) |
+| 52 weeks | gold | 43 | 60% | +3.8% | -9.9% | 19 | 5 of 36 | N100 drawdown from its high: good -9.2% vs bad -4.4% (percentile 5); band width (2 sd ÷ mean): good 11.6% vs bad 14.6% (percentile 1); held − peer, 13 wk before entry: good -12.6% vs bad -20.0% (percentile 97); N100 return during the trade (during): good 4.0% vs bad 19.8% (percentile 0) |
+| 26 weeks | index | 188 | 71% | +2.1% | -0.7% | 10 | 8 of 36 | N100 return during the trade (during): good 0.6% vs bad 7.9% (percentile 0); legs' correlation during the trade (during): good 0.92 vs bad 0.88 (percentile 99) |
+| 26 weeks | gold | 82 | 56% | +1.7% | -5.5% | 17 | 13 of 36 | N100 52-week return: good 12.4% vs bad 5.9% (percentile 99); N100 drawdown from its high: good -3.6% vs bad -6.0% (percentile 98); held leg's volatility, 26 wk: good 12.6% vs bad 16.8% (percentile 0); ratio's volatility, 26 wk: good 21.9% vs bad 24.8% (percentile 1); held − peer, 4 wk before entry: good -7.4% vs bad -8.5% (percentile 95); N100 return during the trade (during): good 1.7% vs bad 3.9% (percentile 1) |
+| 13 weeks | index | 312 | 62% | +1.0% | -0.7% | 7 | 10 of 36 | held leg's volatility, 26 wk: good 17.6% vs bad 19.1% (percentile 3); peer's volatility, 26 wk: good 17.6% vs bad 19.8% (percentile 2); held − peer, 4 wk before entry: good -2.1% vs bad -2.7% (percentile 97); held − peer, 13 wk before entry: good -1.5% vs bad -0.9% (percentile 5); N100 return during the trade (during): good 0.9% vs bad 2.5% (percentile 2) |
+| 13 weeks | gold | 144 | 57% | +1.6% | -3.9% | 10 | 6 of 36 | legs' correlation, 26 wk: good -0.10 vs bad -0.05 (percentile 4); held leg's 13-week return before entry: good -0.1% vs bad 2.7% (percentile 1); N100 return during the trade (during): good 0.7% vs bad 3.5% (percentile 1) |
+| 250 days (daily) | index | 97 | 67% | +1.9% | -2.4% | 18 | 6 of 36 | N100 return during the trade (during): good 0.8% vs bad 17.1% (percentile 0); legs' correlation during the trade (during): good 0.92 vs bad 0.86 (percentile 100) |
+| 250 days (daily) | gold | 42 | 62% | +3.6% | -10.5% | 22 | 5 of 36 | N100 drawdown from its high: good -9.4% vs bad -3.4% (percentile 2); held leg's volatility, 26 wk: good 15.9% vs bad 15.2% (percentile 97); N100 return during the trade (during): good 4.8% vs bad 19.8% (percentile 0) |
+| 120 days (daily) | index | 190 | 72% | +2.0% | -0.8% | 10 | 7 of 36 | N100 return during the trade (during): good 0.7% vs bad 6.7% (percentile 0); legs' correlation during the trade (during): good 0.93 vs bad 0.89 (percentile 98) |
+| 120 days (daily) | gold | 84 | 58% | +1.9% | -5.3% | 17 | 12 of 36 | N100 52-week return: good 12.3% vs bad 5.7% (percentile 99); N100 drawdown from its high: good -3.6% vs bad -6.0% (percentile 97); held leg's volatility, 26 wk: good 12.3% vs bad 16.7% (percentile 0); ratio's volatility, 26 wk: good 21.6% vs bad 25.1% (percentile 1); held − peer, 4 wk before entry: good -6.8% vs bad -8.8% (percentile 99); ratio's volatility during the trade (during): good 19.9% vs bad 24.0% (percentile 1) |
+| 60 days (daily) | index | 318 | 62% | +1.1% | -0.7% | 7 | 9 of 36 | held leg's volatility, 26 wk: good 17.6% vs bad 19.1% (percentile 3); held − peer, 13 wk before entry: good -1.5% vs bad -0.7% (percentile 1); N100 return during the trade (during): good 0.6% vs bad 2.5% (percentile 1) |
+| 60 days (daily) | gold | 140 | 56% | +1.4% | -4.3% | 10 | 6 of 36 | legs' correlation, 26 wk: good -0.10 vs bad -0.04 (percentile 1); held leg's 13-week return before entry: good 0.4% vs bad 2.7% (percentile 3) |
+| 20 days (daily) | index | 752 | 64% | +0.7% | -0.1% | 3 | 10 of 36 | held leg's volatility, 26 wk: good 17.7% vs bad 19.2% (percentile 0); |z| at entry: good 1.54 vs bad 1.70 (percentile 0); peer's 13-week return before entry: good 3.7% vs bad 5.7% (percentile 3); N100 return during the trade (during): good 0.9% vs bad 1.7% (percentile 0) |
+| 20 days (daily) | gold | 337 | 58% | +1.3% | -1.4% | 4 | 14 of 36 | legs' correlation, 26 wk: good -0.02 vs bad -0.08 (percentile 99); N100 drawdown from its high: good -6.1% vs bad -3.7% (percentile 0); held leg's volatility, 26 wk: good 16.1% vs bad 14.6% (percentile 99); band width (2 sd ÷ mean): good 4.2% vs bad 3.8% (percentile 95); |z| at entry: good 1.65 vs bad 1.51 (percentile 95); ratio's volatility during the trade (during): good 18.1% vs bad 22.5% (percentile 4) |
+
+### Trades by the length of the hold, every z window
+
+| z window | pool | held | trades | share good | median extra | mean extra | median weeks held |
+|---|---|---|---|---|---|---|---|
+| 52 weeks | gold | up to 13 weeks | 16 | 100% | +8.8% | +9.0% | 6 |
+| 52 weeks | gold | 14–52 weeks | 12 | 83% | +7.5% | +4.7% | 22 |
+| 52 weeks | gold | over 52 weeks | 15 | 0% | -40.5% | -41.6% | 71 |
+| 52 weeks | index | up to 13 weeks | 43 | 98% | +3.3% | +3.6% | 5 |
+| 52 weeks | index | 14–52 weeks | 37 | 68% | +1.5% | -0.0% | 21 |
+| 52 weeks | index | over 52 weeks | 21 | 0% | -15.9% | -18.4% | 67 |
+| 26 weeks | gold | up to 13 weeks | 31 | 100% | +9.3% | +9.2% | 6 |
+| 26 weeks | gold | 14–52 weeks | 46 | 33% | -3.1% | -10.2% | 22 |
+| 26 weeks | gold | over 52 weeks | 5 | 0% | -52.0% | -53.8% | 66 |
+| 26 weeks | index | up to 13 weeks | 112 | 97% | +2.7% | +3.1% | 5 |
+| 26 weeks | index | 14–52 weeks | 65 | 38% | -0.7% | -4.1% | 20 |
+| 26 weeks | index | over 52 weeks | 11 | 0% | -22.0% | -20.3% | 57 |
+| 13 weeks | gold | up to 13 weeks | 94 | 83% | +4.4% | +3.7% | 6 |
+| 13 weeks | gold | 14–52 weeks | 50 | 8% | -14.6% | -18.2% | 20 |
+| 13 weeks | index | up to 13 weeks | 237 | 80% | +1.7% | +1.6% | 5 |
+| 13 weeks | index | 14–52 weeks | 75 | 8% | -5.4% | -8.1% | 19 |
+| 250 days (daily) | gold | up to 13 weeks | 15 | 100% | +8.4% | +8.9% | 5 |
+| 250 days (daily) | gold | 14–52 weeks | 11 | 91% | +7.3% | +6.1% | 19 |
+| 250 days (daily) | gold | over 52 weeks | 16 | 6% | -37.6% | -40.1% | 70 |
+| 250 days (daily) | index | up to 13 weeks | 41 | 98% | +3.3% | +3.6% | 5 |
+| 250 days (daily) | index | 14–52 weeks | 31 | 77% | +1.7% | +1.4% | 21 |
+| 250 days (daily) | index | over 52 weeks | 25 | 4% | -15.9% | -17.0% | 62 |
+| 120 days (daily) | gold | up to 13 weeks | 33 | 100% | +9.3% | +9.4% | 5 |
+| 120 days (daily) | gold | 14–52 weeks | 46 | 35% | -3.1% | -10.6% | 22 |
+| 120 days (daily) | gold | over 52 weeks | 5 | 0% | -51.0% | -53.9% | 68 |
+| 120 days (daily) | index | up to 13 weeks | 113 | 98% | +2.7% | +3.1% | 5 |
+| 120 days (daily) | index | 14–52 weeks | 67 | 37% | -1.3% | -4.1% | 21 |
+| 120 days (daily) | index | over 52 weeks | 10 | 0% | -22.6% | -22.1% | 58 |
+| 60 days (daily) | gold | up to 13 weeks | 89 | 83% | +4.2% | +3.7% | 7 |
+| 60 days (daily) | gold | 14–52 weeks | 51 | 8% | -14.6% | -18.3% | 20 |
+| 60 days (daily) | index | up to 13 weeks | 240 | 80% | +1.8% | +1.7% | 5 |
+| 60 days (daily) | index | 14–52 weeks | 78 | 8% | -5.3% | -7.9% | 19 |
+| 20 days (daily) | gold | up to 13 weeks | 324 | 60% | +1.6% | -0.5% | 4 |
+| 20 days (daily) | gold | 14–52 weeks | 13 | 0% | -18.4% | -22.4% | 16 |
+| 20 days (daily) | index | up to 13 weeks | 733 | 66% | +0.7% | +0.3% | 3 |
+| 20 days (daily) | index | 14–52 weeks | 19 | 0% | -11.4% | -12.8% | 16 |
+
+### Closed trades (median calendar days held) per pair, every z window
+
+| pair | data window | 52 weeks | 26 weeks | 13 weeks | 250 days (daily) | 120 days (daily) | 60 days (daily) | 20 days (daily) |
+|---|---|---|---|---|---|---|---|---|
+| N100 ÷ MC100 | 2006-01-06 → 2026-08-28 | 25 (91) | 45 (77) | 85 (56) | 23 (119) | 45 (77) | 90 (52) | 201 (21) |
+| N100 ÷ SC100 | 2006-01-06 → 2026-08-28 | 26 (144) | 54 (63) | 79 (56) | 25 (147) | 54 (66) | 79 (56) | 207 (21) |
+| N100 ÷ Micro250 | 2022-01-14 → 2026-08-28 | 5 (105) | 13 (21) | 19 (49) | 5 (105) | 12 (56) | 22 (32) | 45 (21) |
+| MC100 ÷ SC100 | 2006-01-06 → 2026-08-28 | 34 (108) | 57 (56) | 92 (46) | 33 (98) | 59 (63) | 90 (46) | 201 (21) |
+| MC100 ÷ Micro250 | 2022-01-14 → 2026-08-28 | 7 (42) | 10 (42) | 18 (42) | 7 (42) | 11 (70) | 17 (42) | 49 (21) |
+| SC100 ÷ Micro250 | 2022-01-14 → 2026-08-28 | 4 (228) | 9 (133) | 19 (42) | 4 (228) | 9 (126) | 20 (49) | 49 (21) |
+| N100 ÷ GoldMCX | 2015-01-16 → 2026-08-28 | 15 (77) | 25 (105) | 46 (60) | 17 (77) | 27 (98) | 43 (63) | 100 (25) |
+| MC100 ÷ GoldMCX | 2015-01-16 → 2026-08-28 | 13 (133) | 24 (129) | 45 (63) | 11 (196) | 24 (129) | 45 (56) | 95 (28) |
+| SC100 ÷ GoldMCX | 2015-01-16 → 2026-08-28 | 10 (448) | 24 (133) | 41 (77) | 10 (452) | 24 (133) | 40 (74) | 104 (28) |
+| Micro250 ÷ GoldMCX | 2022-01-14 → 2026-08-28 | 5 (119) | 9 (126) | 12 (119) | 4 (308) | 9 (126) | 12 (119) | 38 (28) |
+
+## The legs' correlation at entry, by correlation period and z window — good − bad median (percentile) · rank correlation with the extra (percentile)
+
+Weekly periods: weekly log returns on decision weeks; daily periods: daily log returns on the pair's common trading days, read at the entry decision. Seed default_rng([106, window_id, pool_id]); the 26- and 52-week rows are the conditions above.
+
+| z window | pool | 13 weeks | 26 weeks | 52 weeks | 20 days (daily) | 60 days (daily) | 120 days (daily) | 250 days (daily) |
+|---|---|---|---|---|---|---|---|---|
+| 52 weeks | index | +0.03 (**96.2**) · 0.13 (86.1) | -0.01 (31.6) · 0.06 (71.5) | -0.01 (5.4) · -0.01 (36.8) | +0.03 (88.3) · 0.13 (87.8) | +0.00 (59.9) · 0.17 (94.5) | -0.00 (37.2) · 0.16 (92.5) | +0.00 (28.4) · 0.08 (69.0) |
+| 52 weeks | gold | -0.02 (30.2) · -0.16 (13.4) | -0.00 (50.6) · 0.00 (49.0) | -0.02 (40.2) · 0.10 (70.0) | +0.11 (67.5) · -0.09 (29.2) | +0.06 (65.0) · -0.15 (17.9) | -0.02 (41.9) · -0.10 (22.1) | -0.11 (28.0) · -0.04 (39.1) |
+| 26 weeks | index | +0.00 (73.9) · -0.02 (39.1) | +0.01 (79.7) · 0.02 (58.4) | -0.01 (19.5) · -0.08 (15.0) | -0.02 (30.9) · 0.05 (72.9) | +0.02 (94.4) · 0.12 (**95.0**) | +0.02 (**95.1**) · 0.14 (**97.0**) | +0.01 (60.5) · 0.02 (58.9) |
+| 26 weeks | gold | +0.34 (**99.3**) · 0.30 (**99.8**) | +0.07 (88.5) · 0.11 (82.4) | -0.01 (49.6) · -0.08 (26.4) | -0.03 (23.9) · -0.18 (5.2) | +0.08 (87.9) · 0.12 (84.2) | -0.01 (31.6) · 0.03 (57.0) | -0.08 (11.9) · 0.02 (56.3) |
+| 13 weeks | index | -0.00 (27.4) · -0.05 (17.2) | +0.00 (44.0) · -0.08 (10.2) | -0.00 (20.1) · -0.11 (**3.4**) | -0.00 (40.0) · -0.01 (40.9) | -0.00 (29.1) · 0.04 (72.8) | +0.00 (25.6) · -0.00 (46.6) | +0.01 (39.6) · -0.06 (15.0) |
+| 13 weeks | gold | +0.00 (52.1) · 0.05 (71.2) | -0.05 (**4.5**) · -0.09 (16.1) | -0.02 (12.4) · -0.10 (13.9) | -0.18 (**0.0**) · -0.33 (**0.0**) | -0.08 (**2.5**) · -0.11 (10.8) | -0.07 (**2.9**) · -0.22 (**0.4**) | -0.08 (6.2) · -0.19 (**2.6**) |
+| 250 days (daily) | index | +0.04 (**97.7**) · 0.08 (75.1) | -0.01 (14.6) · 0.05 (64.8) | -0.00 (6.4) · -0.02 (34.3) | +0.02 (85.5) · 0.12 (86.2) | +0.02 (81.0) · 0.17 (95.0) | +0.00 (40.8) · 0.12 (85.8) | +0.01 (56.6) · 0.07 (68.5) |
+| 250 days (daily) | gold | -0.12 (19.9) · -0.18 (10.7) | -0.02 (50.5) · -0.05 (37.1) | -0.02 (47.0) · 0.13 (74.2) | -0.21 (12.3) · -0.30 (**2.8**) | -0.05 (32.0) · -0.31 (**1.7**) | -0.17 (12.0) · -0.27 (5.3) | -0.13 (10.5) · -0.21 (10.2) |
+| 120 days (daily) | index | +0.01 (77.1) · -0.03 (34.6) | +0.00 (64.8) · -0.01 (42.4) | -0.01 (21.9) · -0.09 (9.7) | +0.01 (73.4) · 0.09 (87.0) | +0.01 (94.2) · 0.11 (94.7) | +0.01 (85.9) · 0.10 (91.2) | +0.00 (56.7) · 0.03 (64.0) |
+| 120 days (daily) | gold | +0.38 (**99.9**) · 0.31 (**99.8**) | +0.08 (94.8) · 0.08 (74.9) | +0.01 (54.9) · -0.10 (19.6) | -0.04 (19.7) · -0.19 (**4.7**) | +0.08 (89.5) · 0.09 (79.0) | -0.03 (20.5) · -0.09 (21.6) | -0.07 (16.0) · -0.00 (46.2) |
+| 60 days (daily) | index | -0.00 (32.1) · -0.05 (18.5) | +0.01 (62.8) · -0.09 (6.0) | +0.00 (36.4) · -0.09 (**4.3**) | -0.01 (8.5) · -0.04 (24.5) | -0.00 (27.6) · 0.01 (58.7) | +0.00 (40.4) · -0.03 (33.7) | +0.01 (46.8) · -0.07 (9.7) |
+| 60 days (daily) | gold | -0.00 (48.5) · 0.03 (61.9) | -0.06 (**1.4**) · -0.06 (25.7) | -0.04 (7.5) · -0.08 (18.9) | -0.20 (**0.1**) · -0.33 (**0.0**) | -0.09 (**1.2**) · -0.07 (21.3) | -0.09 (**0.6**) · -0.20 (**0.9**) | -0.09 (**2.1**) · -0.16 (**4.2**) |
+| 20 days (daily) | index | +0.00 (63.6) · -0.01 (36.2) | -0.00 (43.5) · 0.01 (56.1) | +0.01 (80.8) · 0.02 (70.8) | +0.01 (**96.9**) · 0.09 (**99.7**) | -0.00 (41.2) · 0.01 (60.5) | -0.00 (53.0) · 0.03 (77.2) | +0.01 (84.2) · 0.06 (93.6) |
+| 20 days (daily) | gold | +0.08 (93.8) · 0.05 (84.0) | +0.06 (**98.7**) · 0.13 (**99.0**) | +0.03 (93.2) · 0.04 (74.6) | -0.07 (**1.9**) · -0.06 (14.9) | +0.02 (82.5) · 0.06 (84.8) | +0.03 (81.2) · 0.04 (75.8) | -0.00 (37.0) · 0.04 (76.4) |

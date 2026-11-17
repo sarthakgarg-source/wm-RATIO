@@ -18,7 +18,8 @@
   "z_max_abs_diff": 8.548894925297645e-11,
   "rule_mismatch": [],
   "rule_trades_matched": 151,
-  "zwin_daily_max_abs_diff": 3.79444586862121e-08
+  "zwin_daily_max_abs_diff": 3.79444586862121e-08,
+  "variant_rule_mismatch": []
  },
  "notable": [
   19,
@@ -170,5 +171,5 @@
    250
   ]
  },
- "seconds": 400
+ "seconds": 388
 }

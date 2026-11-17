@@ -853,28 +853,31 @@ function applyTheme(){
   document.getElementById('theme').textContent=d?'Light':'Dark';
 }
 function curWin(){const s=document.getElementById('zwin');return s?s.value:null;}
+function curCorr(){const s=document.getElementById('cwin');return s?s.value:null;}
+function parseMeta(m){m=String(m);let pair=m,w=null,c=null;const ic=m.indexOf('¤');if(ic>=0){c=m.slice(ic+1);m=m.slice(0,ic);}const iw=m.indexOf('§');if(iw>=0){w=m.slice(iw+1);m=m.slice(0,iw);}return {pair:m,w:w,c:c};}
+function showTrace(t,p,w,c,perPair){const q=parseMeta(t.meta);if(perPair&&q.pair!==p)return false;if(!perPair&&q.pair!==''&&q.pair!=='z')return false;return (q.w===null||q.w===w)&&(q.c===null||q.c===c);}
+function pickTitle(T,keys){for(const k of keys){if(k!==null&&T[k]!==undefined)return T[k];}return undefined;}
 function showPair(p){
-  const w=curWin();
+  const w=curWin(),c=curCorr();
   document.querySelectorAll('.per-pair').forEach(card=>{
     const div=card.querySelector('.js-plotly-plot');if(!div)return;
-    Plotly.restyle(div,{visible:div.data.map(t=>t.meta===p||(w!==null&&t.meta===p+'§'+w))});
-    const T=JSON.parse(card.dataset.titles);
-    Plotly.relayout(div,{'title.text':(w!==null&&T[p+'§'+w]!==undefined)?T[p+'§'+w]:T[p]});
+    Plotly.restyle(div,{visible:div.data.map(t=>showTrace(t,p,w,c,true))});
+    const T=JSON.parse(card.dataset.titles);const tt=pickTitle(T,[p+'§'+w+'¤'+c,p+'§'+w,p+'¤'+c,p]);if(tt!==undefined)Plotly.relayout(div,{'title.text':tt});
   });
   document.querySelectorAll('.per-win').forEach(card=>{
-    const div=card.querySelector('.js-plotly-plot');if(!div||w===null)return;
-    Plotly.restyle(div,{visible:div.data.map(t=>String(t.meta).endsWith('§'+w))});
-    const T=JSON.parse(card.dataset.titles||'{}');if(T[w]!==undefined)Plotly.relayout(div,{'title.text':T[w]});
+    const div=card.querySelector('.js-plotly-plot');if(!div)return;
+    Plotly.restyle(div,{visible:div.data.map(t=>showTrace(t,p,w,c,false))});
+    const T=JSON.parse(card.dataset.titles||'{}');const tt=pickTitle(T,['§'+w+'¤'+c,'§'+w,'¤'+c,w,c]);if(tt!==undefined)Plotly.relayout(div,{'title.text':tt});
   });
-  document.querySelectorAll('[data-pair]').forEach(el=>{el.hidden=el.dataset.pair!==p||(el.dataset.win!==undefined&&el.dataset.win!==w);});
-  document.querySelectorAll('[data-winonly]').forEach(el=>{el.hidden=el.dataset.winonly!==w;});
-  try{localStorage.setItem('e01-pair',p);if(w!==null)localStorage.setItem('e01-pair-win',w);}catch(e){}
+  document.querySelectorAll('[data-pair]').forEach(el=>{el.hidden=el.dataset.pair!==p||(el.dataset.win!==undefined&&el.dataset.win!==w)||(el.dataset.cwin!==undefined&&el.dataset.cwin!==c);});
+  document.querySelectorAll('[data-winonly],[data-cwinonly]').forEach(el=>{el.hidden=(el.dataset.winonly!==undefined&&el.dataset.winonly!==w)||(el.dataset.cwinonly!==undefined&&el.dataset.cwinonly!==c);});
+  try{localStorage.setItem('e01-pair',p);if(w!==null)localStorage.setItem('e01-pair-win',w);if(c!==null)localStorage.setItem('e01-pair-cwin',c);}catch(e){}
 }
 window.addEventListener('load',()=>{
   const sel=document.getElementById('pair');let p=sel.value;
   try{const s=localStorage.getItem('e01-pair');if(s&&Array.from(sel.options).some(o=>o.value===s)){p=s;sel.value=s;}}catch(e){}
-  const ws=document.getElementById('zwin');
-  if(ws){try{const s=localStorage.getItem('e01-pair-win');if(s&&Array.from(ws.options).some(o=>o.value===s))ws.value=s;}catch(e){}ws.addEventListener('change',()=>showPair(sel.value));}
+  [['zwin','e01-pair-win'],['cwin','e01-pair-cwin']].forEach(([id,key])=>{const el=document.getElementById(id);
+    if(el){try{const s=localStorage.getItem(key);if(s&&Array.from(el.options).some(o=>o.value===s))el.value=s;}catch(e){}el.addEventListener('change',()=>showPair(sel.value));}});
   showPair(p);applyTheme();
   sel.addEventListener('change',e=>showPair(e.target.value));
   document.getElementById('theme').addEventListener('click',()=>{document.documentElement.dataset.theme=isDark()?'light':'dark';applyTheme();});

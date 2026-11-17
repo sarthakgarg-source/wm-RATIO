@@ -52,7 +52,10 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              outperformance against 50/50, what follows a band touch, the z-score's information coefficient, and the T03
              rule run on E01's random walks: signal or mechanics? (2026-11-17)
              E01, E03 and E04 have a z window dropdown: 13 / 26 / 52 weeks (weekly closes) and 20 / 60 / 120 / 250 trading days
-             (daily closes, daily random walks); shared code explore/E01_ratio_cycles/zwin.py (2026-11-17)
+             (daily closes, daily random walks); shared code explore/E01_ratio_cycles/zwin.py (2026-11-17). On E03 and E04 it
+             switches every section: the trade sections run T03's rule on the chosen window's band (variants.py; the 52-week
+             run is checked to be T03 exactly). E03 also has a correlation-period dropdown (the legs' correlation over 13 / 26 /
+             52 weeks or 20 / 60 / 120 / 250 days) (2026-11-17)
 ```
 
 **Results (run `headline`, 2026-11-17):** the rule is **REFUTED** at the MDE (2.8–12.1 pp/yr). T02 at the 95th percentile:

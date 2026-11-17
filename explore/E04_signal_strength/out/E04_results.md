@@ -83,6 +83,18 @@ Weekly windows on decision-week closes with E01's random walks; daily windows on
 
 _The real trades recomputed close to close against T03's fill-based extras: correlation N100 ÷ MC100 0.986 (25 trades), N100 ÷ SC100 0.957 (26 trades), N100 ÷ Micro250 1.000 (3 trades), MC100 ÷ SC100 0.973 (34 trades), MC100 ÷ Micro250 0.991 (5 trades), SC100 ÷ Micro250 0.999 (3 trades), N100 ÷ GoldMCX 0.992 (13 trades), MC100 ÷ GoldMCX 0.995 (12 trades), SC100 ÷ GoldMCX 0.992 (8 trades), Micro250 ÷ GoldMCX 0.997 (4 trades)._
 
+## 1, 4 and 5 for every z window (the rule run with that window's band; decisions weekly, daily windows read at each week's last trading day; 52 weeks = T03)
+
+| z window | excess a year, index pairs (range) | information ratio (range) | hit rate, pooled index pairs (random walks, pct) | mean trade (random walks, pct) | trades held over a year (random walks, pct) | index pairs: long holds' piece / the rest's |
+|---|---|---|---|---|---|---|
+| 52 weeks | -5.3 to -0.7 pp | -0.62 to -0.18 | 68% (72%, 19.3) | -1.62% (-0.13%, 7.0) | 21% (14%, 94.5) | -78.8% / +56.8% |
+| 26 weeks | -4.9 to -1.0 pp | -0.64 to -0.22 | 69% (70%, 38.1) | -0.62% (-0.20%, 21.0) | 6% (3%, **98.6**) | -59.4% / -0.8% |
+| 13 weeks | -5.7 to -1.7 pp | -0.77 to -0.31 | 63% (67%, 9.1) | -0.80% (-0.13%, **2.1**) | 0% (0%, 29.1) | +0.0% / -82.0% |
+| 250 days (daily) | -5.3 to -0.6 pp | -0.63 to -0.16 | 68% (72%, 23.4) | -1.85% (-0.18%, 5.5) | 26% (15%, **99.6**) | -83.8% / +92.5% |
+| 120 days (daily) | -5.3 to -0.8 pp | -0.69 to -0.19 | 69% (70%, 42.5) | -0.63% (-0.22%, 21.6) | 6% (3%, **96.9**) | -59.3% / -6.6% |
+| 60 days (daily) | -5.1 to -1.3 pp | -0.75 to -0.26 | 64% (67%, 8.8) | -0.79% (-0.14%, **1.5**) | 0% (0%, 25.8) | +0.0% / -81.1% |
+| 20 days (daily) | -3.7 to -0.1 pp | -0.86 to -0.01 | 63% (64%, 32.2) | -0.17% (-0.05%, 17.2) | 0% (0%, 50.0) | +0.0% / -77.1% |
+
 ## 5. Where the shortfall against 50/50 comes from (change of strategy ÷ 50/50 during each holding period)
 
 The pieces multiply exactly to the whole: trades held over 52 weeks, trades held 52 weeks or less, and the neutral stretches between trades.
