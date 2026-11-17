@@ -25,6 +25,8 @@ a second exit, at the opposite band).
 request of 2026-11-17), pass mark the 98th percentile. T01, T02 and T03 are COMPLETE and reproducible; the shared engine
 takes `--test T01 | T02 | T03`, which fixes the ratio form and the cap. The next free test number is T04 (candidates in
 T03.md §7).
+**No maximum hold from T03 on:** the 26-week cap exists only in T01's and T02's locked designs (their run.sh pass
+`--max-hold 26` to the verifier); the engine's and the verifier's default is no cap, and E03 uses T03's uncapped trades.
 
 **Layout**
 ```
@@ -47,10 +49,10 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              E02_ratio_segments/ (E02.md design; segments.py → out/E02_segments.html, E02_results.md, CSVs) — HINDSIGHT
              segmentation of the daily ratios with the desk's market-segregation method (scipy prominence → peak-to-peak
              regression), trend in % a year, grid of settings, cross-checked against E01 (2026-11-16); disclosed in T02.md §2
-             E03_trade_conditions/ (E03.md design; conditions.py → out/E03_conditions.html, E03_results.md, CSVs) — after T01
-             and T02 ran: forward returns of the cheaper / richer leg by z bucket against E01's random walks, and the market's
-             condition at each T01 / T02 trade (correlation, market regime, volatility, entry depth and speed) related to the
-             trade's outcome with within-pair permutation nulls (2026-11-17)
+             E03_trade_conditions/ (E03.md design; conditions.py → out/E03_conditions.html, E03_results.md, CSVs) — forward
+             returns of the cheaper / richer leg by z bucket against E01's random walks, and the market's condition at each
+             T03 trade (no cap; correlation, market regime, volatility, entry depth and speed) related to the trade's outcome
+             with within-pair permutation nulls, plus trade counts and lengths over time (2026-11-17)
 ```
 
 **Result of T03 (run `headline`, 2026-11-17):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 at the 98th percentile.

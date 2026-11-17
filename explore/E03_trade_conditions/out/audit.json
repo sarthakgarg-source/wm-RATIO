@@ -6,14 +6,9 @@
   "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
  },
  "tests": {
-  "T02": {
+  "T03": {
    "run_date": "2026-11-17",
    "ratio": "plain",
-   "draws": null
-  },
-  "T01": {
-   "run_date": "2026-11-12",
-   "ratio": "log",
    "draws": null
   }
  },
@@ -74,19 +69,13 @@
    "violations": []
   },
   "open_trades_left_out": {
-   "T02": 7,
-   "T01": 7
+   "T03": 7
   },
-  "overlap_T01_T02": {
-   "T02_trades": 195,
-   "T01_trades": 193,
-   "shared": 185,
-   "share_of_T02_in_T01": 0.9487179487179487
-  },
+  "max_hold": "none (T03)",
   "notable": [
-   21,
-   144
+   13,
+   72
   ]
  },
- "seconds": 45
+ "seconds": 39
 }

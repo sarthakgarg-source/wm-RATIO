@@ -31,7 +31,7 @@ WINDOWS = (26, 52, 104)              # band windows in decision weeks; 52 is the
 EXITS = ("E1", "E2")                 # E1 back at the mean (deciding), E2 the opposite band
 COSTS_BPS = (0.0, 20.8, 50.0)        # round trip; 20.8 is the reference
 REF = {"window": 52, "exit": "E1", "cost_bps": 20.8}
-MAX_HOLD = 26                        # decision weeks
+MAX_HOLD = 26                        # decision weeks: T01 / T02's locked cap only (TEST_MAX_HOLD); from T03 on there is no cap
 SD_MULT = 1.0
 MIN_OBS_FRAC = 0.8
 START = {"index": "2006-01-02", "gold": "2015-01-12"}
@@ -77,10 +77,10 @@ def pair_frame(px: dict, pair: str, ratio: str = "log") -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------------------------------------------- the decisions
-def decide(pf: pd.DataFrame, window: int, exit_rule: str, pit: PIT, max_hold: int | None = MAX_HOLD, ratio: str = "log") -> pd.DataFrame:
+def decide(pf: pd.DataFrame, window: int, exit_rule: str, pit: PIT, max_hold: int | None = None, ratio: str = "log") -> pd.DataFrame:
     """One row per decision week: the band, the position vs the band, the state before and after, the reason. The band at
     week t is computed from the weekly series truncated at t (asserted), so nothing after t is used. The series is the
-    column of `ratio` in RATIO_FORMS (lr or ratio); the variable `lr` below holds whichever it is. max_hold None = no cap."""
+    column of `ratio` in RATIO_FORMS (lr or ratio); the variable `lr` below holds whichever it is. max_hold None (the default) = no cap; run() always passes the test's own."""
     col = RATIO_FORMS[ratio][0]
     dec = pf[pf["decision"]]
     lr = dec[col]; dates = dec.index; min_obs = int(round(MIN_OBS_FRAC * window))

@@ -1,14 +1,14 @@
 """
 Gate V1: an independent recomputation of every NAV in an evidence folder. Imports NOTHING from ratio_engine.py.
 
-    python analysis/verify_ratio.py tests/T01/evidence/<run>            # verify; exit 1 on any mismatch or if nothing compared
-    python analysis/verify_ratio.py tests/T01/evidence/<run> --selftest  # also prove it fails on corrupted copies
-    python analysis/verify_ratio.py tests/T02/evidence/<run> --ratio plain --selftest   # T02: the band on P_a / P_b
+    python analysis/verify_ratio.py tests/T01/evidence/<run> --max-hold 26             # verify; exit 1 on any mismatch or if nothing compared
+    python analysis/verify_ratio.py tests/T01/evidence/<run> --max-hold 26 --selftest  # also prove it fails on corrupted copies
+    python analysis/verify_ratio.py tests/T02/evidence/<run> --ratio plain --max-hold 26 --selftest   # T02: the band on P_a / P_b, 26-week cap
     python analysis/verify_ratio.py tests/T03/evidence/<run> --ratio plain --max-hold none --selftest   # T03: no cap
 
 --ratio (log | plain, default log = T01) is the form the band is drawn on, taken from the test's locked design via run.sh,
 not from the engine: the decisions are re-derived with it, and an audit.json that names another form is a failure.
---max-hold (a number of decision weeks, or none; default 26 = T01 / T02) is the cap, from the design in the same way; an
+--max-hold (a number of decision weeks, or none; default none, the standard from T03 on; T01 / T02 pass 26) is the cap, from the design; an
 audit.json whose max_hold_weeks differs is a failure, and the decisions are re-derived with the design's cap, not the audit's.
 
 Route: the engine holds UNITS and values them; this program holds VALUE WEIGHTS and compounds daily returns from the closes,
@@ -130,7 +130,7 @@ def stats(nav):
     return nav.iloc[-1] ** (365.25 / days) - 1, float((nav / nav.cummax() - 1).min()), float(nav.iloc[-1])
 
 
-def verify(ev: str, quiet=False, ratio: str = "log", max_hold=26) -> tuple[int, int]:
+def verify(ev: str, quiet=False, ratio: str = "log", max_hold=None) -> tuple[int, int]:
     audit = json.load(open(os.path.join(ev, "audit.json")))
     px = load_daily(); summ = pd.read_csv(os.path.join(ev, "summary.csv")); decs = pd.read_csv(os.path.join(ev, "decisions.csv"), parse_dates=["date"])
     compared = 0; failures = []
@@ -183,7 +183,7 @@ def verify(ev: str, quiet=False, ratio: str = "log", max_hold=26) -> tuple[int, 
     return compared, len(failures)
 
 
-def selftest(ev: str, ratio: str = "log", max_hold=26) -> bool:
+def selftest(ev: str, ratio: str = "log", max_hold=None) -> bool:
     """The verifier must FAIL on a corrupted copy: (a) one decision flipped; (b) one NAV file scaled by 1.001."""
     ok = True
     with tempfile.TemporaryDirectory() as tmp:
@@ -202,7 +202,7 @@ if __name__ == "__main__":
     RATIO = sys.argv[sys.argv.index("--ratio") + 1] if "--ratio" in sys.argv else "log"
     if RATIO not in ("log", "plain"):
         sys.exit(f"verify: --ratio must be log or plain, not {RATIO!r}")
-    MH = sys.argv[sys.argv.index("--max-hold") + 1] if "--max-hold" in sys.argv else "26"
+    MH = sys.argv[sys.argv.index("--max-hold") + 1] if "--max-hold" in sys.argv else "none"
     if not (MH == "none" or MH.isdigit()):
         sys.exit(f"verify: --max-hold must be a number of weeks or none, not {MH!r}")
     MAXH = None if MH == "none" else int(MH)

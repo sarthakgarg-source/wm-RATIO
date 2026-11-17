@@ -5,7 +5,7 @@ RUN=${1:-headline}; DRAWS=${2:-2000}; EV=tests/T01/evidence/$RUN
 python3 data/check_approved_data.py                      # 1. is the data exactly the approved data?
 python3 tests/T01/check_prereg.py                        # 2. is the locked design unchanged?
 python3 analysis/ratio_engine.py --run "$RUN" --draws "$DRAWS"   # 3. strategy + every random draw → evidence/
-python3 analysis/verify_ratio.py "$EV" --selftest | tee "$EV/verify.log"   # 4. independent recomputation (+ corrupted-copy test)
+python3 analysis/verify_ratio.py "$EV" --max-hold 26 --selftest | tee "$EV/verify.log"   # 4. independent recomputation (+ corrupted-copy test)
 python3 tests/T01/analyse.py "$RUN"                      # 5. gates + every table → analysis.log, tables.json (stops on a failed gate)
 python3 tests/T01/fill_writeup.py "$RUN"                 # 6. tables into section 4 of T01.md
 python3 tests/T01/report.py "$RUN"                       # 7. the results page

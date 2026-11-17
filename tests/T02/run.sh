@@ -10,7 +10,7 @@ RUN=${1:-headline}; DRAWS=${2:-2000}; EV=tests/T02/evidence/$RUN
 "$PY" tests/T02/check_prereg.py                          # 2b. T02's locked design unchanged (fails until it is frozen)
 "$PY" analysis/ratio_engine.py --test T02 --run "$RUN" --draws "$DRAWS"                    # 3. strategy + every draw, band on P_a / P_b
 "$PY" analysis/ratio_engine.py --test T01 --run "$RUN" --draws 0 --out "$EV/t01_regression"  # 3b. gate V4b: the changed engine under T01's form
-"$PY" analysis/verify_ratio.py "$EV" --ratio plain --selftest | tee "$EV/verify.log"       # 4. independent recomputation (+ corrupted-copy test)
+"$PY" analysis/verify_ratio.py "$EV" --ratio plain --max-hold 26 --selftest | tee "$EV/verify.log"       # 4. independent recomputation (+ corrupted-copy test)
 "$PY" tests/T02/analyse.py "$RUN"                        # 5. gates + every table → analysis.log, tables.json (stops on a failed gate)
 "$PY" tests/T02/fill_writeup.py "$RUN"                   # 6. tables into section 4 of T02.md
 "$PY" tests/T02/report.py "$RUN"                         # 7. the results page
