@@ -19,12 +19,12 @@ a second exit, at the opposite band).
 6. An independent verifier that imports nothing from the engine must agree, and must fail on a corrupted copy.
 7. If any gate fails, stop: read nothing, fix it, rerun into a new evidence folder.
 8. No person's name anywhere in the repo — code, comments, docs, commits (write "the review of <date>", "the desk").
-9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S03, M02, D11 (+ 2 open).
+9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S05, M02, D11 (+ 2 open).
 
-**Current test:** T03 (tests/T03/), **LOCKED, RUNNING** — T02 with no maximum hold: the 26-week cap removed, so a trade ends only at
-its exit rule (the request of 2026-11-17). Pass mark raised to the 98th percentile because the change was suggested by
-results seen on the same data (E03). T01 and T02 stay COMPLETE and reproducible; the shared engine takes `--test T01 | T02 |
-T03`, which fixes the ratio form and the cap.
+**Current test:** none open. T03 (tests/T03/) is **COMPLETE** — T02 with no maximum hold (the 26-week cap removed; the
+request of 2026-11-17), pass mark the 98th percentile. T01, T02 and T03 are COMPLETE and reproducible; the shared engine
+takes `--test T01 | T02 | T03`, which fixes the ratio form and the cap. The next free test number is T04 (candidates in
+T03.md §7).
 
 **Layout**
 ```
@@ -35,7 +35,7 @@ tests/T01/   PLAN.md, T01.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.
 tests/T02/   PLAN.md, T02.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
              check_page.py, T02_results.html, evidence/<run>/ (with t01_regression/ for gate V4b)
 tests/T03/   PLAN.md, T03.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
-             check_page.py; evidence/<run>/ (with t02_regression/ and t01_regression/ for gates V4b, V4c) after the run
+             check_page.py, T03_results.html, evidence/<run>/ (with t02_regression/ and t01_regression/ for gates V4b, V4c)
 tests/       check_names.py (hygiene: no person's name; names from WM_REDACT_NAMES in the git-ignored .env)
 explore/     EXPLORATORY studies — description, never findings, never quoted as evidence for a rule:
              E01_ratio_cycles/ (E01.md design; cycles.py → out/E01_cycles.html, E01_results.md, CSVs) — cyclicality of
@@ -52,6 +52,10 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              condition at each T01 / T02 trade (correlation, market regime, volatility, entry depth and speed) related to the
              trade's outcome with within-pair permutation nulls (2026-11-17)
 ```
+
+**Result of T03 (run `headline`, 2026-11-17):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 at the 98th percentile.
+Removing the 26-week cap does not rescue the rule: **REFUTED** (F-RA-S04). The trades the cap had cut ran on for a median of
+about a year and ended worse on average (F-RA-S05, descriptive). Page tests/T03/T03_results.html.
 
 **Result of T02 (run `headline`, 2026-11-17):** H1 FAIL, H2 FAIL — C1 0 of 6, C2 2 of 6, C3 0 of 6 (4 needed). The plain-ratio
 band gives the same verdict as the log band: **REFUTED at the MDE** (2.5–11.4 pp/yr), F-RA-S03; the two forms make the same
