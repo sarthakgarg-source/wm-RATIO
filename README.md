@@ -21,10 +21,10 @@ a second exit, at the opposite band).
 8. No person's name anywhere in the repo — code, comments, docs, commits (write "the review of <date>", "the desk").
 9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S03, M02, D11 (+ 2 open).
 
-**Current test:** none open. T02 (tests/T02/) is **COMPLETE** — T01 with the band drawn on the plain ratio P_a ÷ P_b
-instead of ln(P_a ÷ P_b) (the request of 2026-11-13); locked 2026-11-17, run `headline` the same day. T01 stays COMPLETE and
-reproducible (`bash tests/T01/run.sh`); the shared engine takes `--test T01 | T02`, which fixes the ratio form. The next free
-test number is T03 (candidates in T02.md §7).
+**Current test:** T03 (tests/T03/), **LOCKED, RUNNING** — T02 with no maximum hold: the 26-week cap removed, so a trade ends only at
+its exit rule (the request of 2026-11-17). Pass mark raised to the 98th percentile because the change was suggested by
+results seen on the same data (E03). T01 and T02 stay COMPLETE and reproducible; the shared engine takes `--test T01 | T02 |
+T03`, which fixes the ratio form and the cap.
 
 **Layout**
 ```
@@ -34,6 +34,8 @@ tests/T01/   PLAN.md, T01.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.
              report.py, check_page.py, null_blocks.py (blocks vs spells in the null), T01_results.html, evidence/<run>/
 tests/T02/   PLAN.md, T02.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
              check_page.py, T02_results.html, evidence/<run>/ (with t01_regression/ for gate V4b)
+tests/T03/   PLAN.md, T03.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
+             check_page.py; evidence/<run>/ (with t02_regression/ and t01_regression/ for gates V4b, V4c) after the run
 tests/       check_names.py (hygiene: no person's name; names from WM_REDACT_NAMES in the git-ignored .env)
 explore/     EXPLORATORY studies — description, never findings, never quoted as evidence for a rule:
              E01_ratio_cycles/ (E01.md design; cycles.py → out/E01_cycles.html, E01_results.md, CSVs) — cyclicality of

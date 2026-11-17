@@ -1,12 +1,14 @@
 """
-T01 / T02 engine: the ±1 sd ratio band, long-only switch, daily-valued book, the two nulls. Writes tests/<test>/evidence/<run>/.
+T01 / T02 / T03 engine: the ±1 sd ratio band, long-only switch, daily-valued book, the two nulls. Writes tests/<test>/evidence/<run>/.
 
     python analysis/ratio_engine.py --test T01 --run headline [--draws 2000] [--out tests/T01/evidence/<run>]
     python analysis/ratio_engine.py --test T02 --run headline [--draws 2000]
+    python analysis/ratio_engine.py --test T03 --run headline [--draws 2000]
 
 Everything here is the pre-registered design of tests/T01/T01.md §3; the parameters below are its constants, not knobs.
 The one difference between the tests is the series the band is drawn on (T02.md §3 step 4), fixed by the test number
 in TEST_RATIO, never by a command-line switch: T01 = ln(P_a ÷ P_b) (column `lr`), T02 = P_a ÷ P_b (column `ratio`).
+T03 is T02 with no maximum hold (T03.md §3 step 5), fixed the same way in TEST_MAX_HOLD.
 """
 import argparse
 import itertools
@@ -36,7 +38,8 @@ START = {"index": "2006-01-02", "gold": "2015-01-12"}
 N_DRAWS_DEFAULT = 2000
 MIN_ROUND_TRIPS, MIN_WEEKS = 4, 200  # the reportability gate
 RATIO_FORMS = {"log": ("lr", "ln(P_a / P_b)"), "plain": ("ratio", "P_a / P_b")}   # form -> (column in decisions.csv, formula)
-TEST_RATIO = {"T01": "log", "T02": "plain"}                                       # the locked form of each test
+TEST_RATIO = {"T01": "log", "T02": "plain", "T03": "plain"}                        # the locked form of each test
+TEST_MAX_HOLD = {"T01": MAX_HOLD, "T02": MAX_HOLD, "T03": None}                   # the locked cap of each test; None = no cap
 
 
 class PIT:
@@ -74,10 +77,10 @@ def pair_frame(px: dict, pair: str, ratio: str = "log") -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------------------------------------------- the decisions
-def decide(pf: pd.DataFrame, window: int, exit_rule: str, pit: PIT, max_hold: int = MAX_HOLD, ratio: str = "log") -> pd.DataFrame:
+def decide(pf: pd.DataFrame, window: int, exit_rule: str, pit: PIT, max_hold: int | None = MAX_HOLD, ratio: str = "log") -> pd.DataFrame:
     """One row per decision week: the band, the position vs the band, the state before and after, the reason. The band at
     week t is computed from the weekly series truncated at t (asserted), so nothing after t is used. The series is the
-    column of `ratio` in RATIO_FORMS (lr or ratio); the variable `lr` below holds whichever it is."""
+    column of `ratio` in RATIO_FORMS (lr or ratio); the variable `lr` below holds whichever it is. max_hold None = no cap."""
     col = RATIO_FORMS[ratio][0]
     dec = pf[pf["decision"]]
     lr = dec[col]; dates = dec.index; min_obs = int(round(MIN_OBS_FRAC * window))
@@ -99,7 +102,7 @@ def decide(pf: pd.DataFrame, window: int, exit_rule: str, pit: PIT, max_hold: in
                 back = (x <= m) if exit_rule == "E1" else (pos == -1)
             if back:
                 reason = "exit: back at the mean" if exit_rule == "E1" else "exit: opposite band"; state = "N"; entered = None
-            elif held >= max_hold:
+            elif max_hold is not None and held >= max_hold:
                 reason = f"exit: max hold {max_hold} weeks"; state = "N"; entered = None
         if state == "N":
             first_below = pos == -1 and prev_pos in (0, 1)
@@ -281,7 +284,7 @@ def trade_extras(trades: list[dict]) -> list[dict]:
 
 # ------------------------------------------------------------------------------------------------------- the run
 def run(out_dir: str, n_draws: int, test: str = "T01"):
-    ratio = TEST_RATIO[test]
+    ratio = TEST_RATIO[test]; max_hold = TEST_MAX_HOLD[test]
     t_start = time.time(); os.makedirs(out_dir, exist_ok=True)
     px = load_daily(); pit = PIT()
     summary, decisions_all, trades_all, extras_all, draw_rows = [], [], [], [], {}
@@ -291,7 +294,7 @@ def run(out_dir: str, n_draws: int, test: str = "T01"):
         pf = pair_frame(px, pair, ratio); stale_rows += int(pf["stale"].sum())
         for window in WINDOWS:
             for eid, exit_rule in enumerate(EXITS):
-                dec = decide(pf, window, exit_rule, pit, ratio=ratio)
+                dec = decide(pf, window, exit_rule, pit, max_hold=max_hold, ratio=ratio)
                 banded = dec[dec["mean"].notna()]
                 if len(banded) < 2:
                     continue
@@ -342,11 +345,11 @@ def run(out_dir: str, n_draws: int, test: str = "T01"):
     pd.concat(decisions_all).to_csv(os.path.join(out_dir, "decisions.csv"), index=False)
     pd.concat(trades_all).to_csv(os.path.join(out_dir, "trades.csv"), index=False)
     pd.concat(extras_all).to_csv(os.path.join(out_dir, "trade_extras.csv"), index=False)
-    audit = {"run_date": date.today().isoformat(), "test": test, "ratio": ratio, "ratio_formula": RATIO_FORMS[ratio][1], "inputs": fingerprints(), "pairs": PAIRS, "deciding_pairs": INDEX_PAIRS, "windows": WINDOWS, "exits": EXITS, "costs_bps": COSTS_BPS, "reference": REF, "max_hold_weeks": MAX_HOLD, "sd_mult": SD_MULT, "min_obs_frac": MIN_OBS_FRAC, "start": START,
+    audit = {"run_date": date.today().isoformat(), "test": test, "ratio": ratio, "ratio_formula": RATIO_FORMS[ratio][1], "inputs": fingerprints(), "pairs": PAIRS, "deciding_pairs": INDEX_PAIRS, "windows": WINDOWS, "exits": EXITS, "costs_bps": COSTS_BPS, "reference": REF, "max_hold_weeks": max_hold, "sd_mult": SD_MULT, "min_obs_frac": MIN_OBS_FRAC, "start": START,
              "draws_per_null": n_draws, "seed_formula": "default_rng([pair_id (+100 for N-B), exit_id, draw_id, window])", "pit_checks": pit.checks, "pit_violations": pit.violations, "null_counts": null_counts_ok, "stale_ohl_rows_in_pair_frames": stale_rows,
              "reportability": {"min_round_trips": MIN_ROUND_TRIPS, "min_weeks": MIN_WEEKS}, "seconds": round(time.time() - t_start)}
     json.dump(audit, open(os.path.join(out_dir, "audit.json"), "w"), indent=1, default=str)
-    print(f"done in {time.time() - t_start:.0f}s → {out_dir}; ratio {RATIO_FORMS[ratio][1]}; PIT checks {pit.checks}, violations {len(pit.violations)}; null draws {null_counts_ok}")
+    print(f"done in {time.time() - t_start:.0f}s → {out_dir}; ratio {RATIO_FORMS[ratio][1]}; max hold {max_hold}; PIT checks {pit.checks}, violations {len(pit.violations)}; null draws {null_counts_ok}")
 
 
 if __name__ == "__main__":
