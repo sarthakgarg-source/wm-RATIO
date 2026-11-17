@@ -8,10 +8,10 @@
 
 | gate | result | evidence |
 |---|---|---|
-| V1 independent verifier | PASS | band on P_a / P_b (audit: plain), maximum hold None (None = no cap); 100 nav files, 61230 comparisons, 0 failures; corrupted copies caught |
+| V1 independent verifier | PASS | band on P_a / P_b (audit: plain); 100 nav files, 61230 comparisons, 0 failures; corrupted copies caught |
 | V2 no look-ahead | PASS | 8,827,882 point-in-time checks, 0 violations |
 | V3 null held its promise | PASS | 400,000 draws checked, 0 with different counts |
-| V4 regression | PASS | always-neutral sleeve = 50/50 buy-and-hold closed form: yes; the changed engine reproduces T02 (final NAV, CAGR, max dd within 1e-9): 600 of 600 rows of tests/T02/evidence/headline/summary.csv, and T01: 600 of 600 rows of tests/T01/evidence/headline/summary.csv |
+| V4 regression | PASS | always-neutral sleeve = 50/50 buy-and-hold closed form: yes; the same rule run as T02 (tests/T02/evidence/headline/): 100 of 100 strategy rows equal (final NAV, CAGR, max dd within 1e-9), decisions identical |
 
 **Null check.** Every one of the 400,000 draws kept the strategy's number of spells, switches and weeks in each state (measured, not assumed): yes.
 
@@ -123,31 +123,7 @@ Exit E2 on the pre-named criteria: C1 0 of 6, C2 0 of 6, C3 0 of 6 (E1 is the de
 | MC100 ÷ Micro250 | 6 | E1 W52 | 57.5 | no |
 | SC100 ÷ Micro250 | 6 | E1 W52 | 57.5 | no |
 
-### 4.6 T03 against T02 (descriptive — no claims)
-
-Reference setting (exit E1, window 52, 20.8 bps); T02 = the same rule with a 26-week maximum hold, run `headline` of 2026-11-17; T03 = no maximum hold; the same decision weeks, nulls and seeds. Weeks held = decision weeks in the trade, closed trades only for the medians; the longest includes a trade still open at the end. Index pairs first, then the gold pairs. Description, not a test.
-
-| pair | decision weeks | weeks in a different state | round trips T02 | round trips T03 | entries same week and leg | entries T02 only | entries T03 only | median weeks held T02 | median weeks held T03 | longest T03 | open at the end T03 | CAGR T02 | CAGR T03 | pct N-A T02 | pct N-A T03 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| N100 ÷ MC100 | 1037 | 204 | 35 | 26 | 26 | 10 | 0 | 17.5 | 13.0 | 112 | 1 | 11.4% | 10.5% | 43.5 | 18.9 |
-| N100 ÷ SC100 | 1037 | 166 | 36 | 27 | 27 | 10 | 0 | 21.0 | 20.5 | 89 | 1 | 7.8% | 7.6% | 8.8 | 11.5 |
-| N100 ÷ Micro250 | 201 | 44 | 7 | 6 | 6 | 1 | 0 | 18.0 | 15.0 | 96 | 1 | 12.3% | 13.1% | 25.9 | 31.9 |
-| MC100 ÷ SC100 | 1037 | 146 | 43 | 35 | 35 | 8 | 0 | 17.0 | 15.5 | 121 | 1 | 10.5% | 11.3% | 20.9 | 56.2 |
-| MC100 ÷ Micro250 | 201 | 42 | 9 | 8 | 8 | 1 | 0 | 16.0 | 6.0 | 58 | 1 | 20.2% | 22.1% | 21.5 | 57.5 |
-| SC100 ÷ Micro250 | 201 | 42 | 6 | 5 | 5 | 1 | 0 | 26.0 | 32.5 | 67 | 1 | 23.0% | 22.8% | 61.1 | 57.5 |
-| N100 ÷ GoldMCX | 566 | 106 | 21 | 16 | 16 | 5 | 0 | 20.0 | 11.0 | 97 | 1 | 11.4% | 11.1% | 22.3 | 27.7 |
-| MC100 ÷ GoldMCX | 566 | 125 | 19 | 13 | 13 | 6 | 0 | 22.0 | 19.0 | 112 | 0 | 14.4% | 12.3% | 29.1 | 20.5 |
-| SC100 ÷ GoldMCX | 566 | 153 | 19 | 10 | 10 | 9 | 0 | 26.0 | 64.0 | 135 | 0 | 10.4% | 6.9% | 17.5 | 8.0 |
-| Micro250 ÷ GoldMCX | 201 | 50 | 7 | 5 | 5 | 2 | 0 | 19.0 | 17.0 | 76 | 0 | 20.9% | 22.9% | 18.7 | 44.1 |
-
-**What became of T02's capped trades** (descriptive). The trades T02 closed at its cap, found in T03 by the same entry week and leg; extra = held leg's fill-to-fill return − the peer's (no cost):
-
-| pool | capped in T02 | same entry in T03 | still open at the end | closed in T03 | median weeks held in T03 | longest in T03 | mean extra T02 (at the cap) | mean extra T03 | median extra T02 | median extra T03 | T03 better than at the cap | T03 extra > 0 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| index pairs | 48 | 37 | 0 | 37 | 56.0 | 121 | -9.8% | -12.5% | -7.8% | -8.3% | 40.5% | 13.5% |
-| gold pairs | 29 | 19 | 1 | 18 | 70.0 | 135 | -16.4% | -35.4% | -14.4% | -31.4% | 22.2% | 5.6% |
-
-### 4.7 Verdict table
+### 4.6 Verdict table
 
 | criterion | needed | got | result |
 |---|---|---|---|
