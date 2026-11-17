@@ -1,0 +1,92 @@
+{
+ "run_date": "2026-11-17",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
+ },
+ "tests": {
+  "T02": {
+   "run_date": "2026-11-17",
+   "ratio": "plain",
+   "draws": null
+  },
+  "T01": {
+   "run_date": "2026-11-12",
+   "ratio": "log",
+   "draws": null
+  }
+ },
+ "setting": {
+  "window": 52,
+  "exit": "E1",
+  "run": "headline"
+ },
+ "part_A": {
+  "draws": 2000,
+  "seed": "default_rng([101, pair_id]) (E01's signs)",
+  "random_legs": "M = (ln a + ln b) / 2 kept real; a* = exp(M + ln r* / 2), b* = exp(M - ln r* / 2)",
+  "z_equals_E01_max_abs_diff": 8.548894925297645e-11,
+  "horizons": [
+   4,
+   13,
+   26
+  ],
+  "buckets": [
+   "< \u22122",
+   "\u22122 to \u22121",
+   "\u22121 to 0",
+   "0 to 1",
+   "1 to 2",
+   "> 2",
+   "all weeks"
+  ],
+  "notable": [
+   51,
+   360
+  ]
+ },
+ "part_B": {
+  "perms": 2000,
+  "seed": "default_rng([105, test_id, pool_id])",
+  "conditions": [
+   "corr26",
+   "corr52",
+   "mkt52",
+   "mkt_dd",
+   "vol_held",
+   "vol_peer",
+   "vol_ratio",
+   "band_width",
+   "z_depth",
+   "since_zero",
+   "lag4",
+   "lag13",
+   "held13",
+   "peer13",
+   "breadth",
+   "mkt_during",
+   "corr_during",
+   "vol_ratio_during"
+  ],
+  "look_ahead_check": {
+   "checks": 120,
+   "violations": []
+  },
+  "open_trades_left_out": {
+   "T02": 7,
+   "T01": 7
+  },
+  "overlap_T01_T02": {
+   "T02_trades": 195,
+   "T01_trades": 193,
+   "shared": 185,
+   "share_of_T02_in_T01": 0.9487179487179487
+  },
+  "notable": [
+   21,
+   144
+  ]
+ },
+ "seconds": 79
+}
