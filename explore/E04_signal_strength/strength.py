@@ -340,7 +340,7 @@ def main():
                                 text=[f"{w}w" for w in b_["weeks"]], textposition="outside", textfont={"size": 9}, constraintext="none", cliponaxis=False,
                                 customdata=np.c_[b_["start"], b_["end"], b_["weeks"], ["still open" if o else "" for o in b_["open"]]],
                                 hovertemplate="%{customdata[0]} → %{customdata[1]} %{customdata[3]}: %{customdata[2]} weeks held<br>strategy ÷ 50/50 changed %{y:+.1f}%<extra></extra>"))
-        titles["sf"][p] = E1.two_line(f"{nice(p)} · {sc_['first']} → {sc_['last']} · strategy ÷ 50/50 {pct_x(sc_['total']):+.1f}% over the window · the {sc_['long_n']} trades held over 52 weeks: {pct_x(sc_['long_sum']):+.1f}%",
+        titles["sf"][p] = E1.two_line(f"{nice(p)} · {sc_['first']} → {sc_['last']} · strategy ÷ 50/50 {pct_x(sc_['total']):+.1f}% over the window · {('the ' + str(sc_['long_n']) + ' trades') if sc_['long_n'] != 1 else 'the one trade'} held over 52 weeks: {pct_x(sc_['long_sum']):+.1f}%",
                                       f"the other {sc_['short_n']} trades together {pct_x(sc_['short_sum']):+.1f}%, the neutral stretches {pct_x(sc_['neutral_sum']):+.1f}%; each bar = one trade at its entry date, its height the change of strategy ÷ 50/50 while it was held, its label the weeks held")
     fS.add_hline(y=0, line={"color": AXIS, "width": 1}); fS.update_yaxes(ticksuffix="%", title={"text": "change of strategy ÷ 50/50 during the trade", "font": {"color": INK2}})
     fS.update_layout(barmode="overlay"); figs["sf"] = E1.style(fS, titles["sf"][DEFAULT_PAIR], 480, legend_top=True)
