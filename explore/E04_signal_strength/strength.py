@@ -114,6 +114,7 @@ def main():
     decs = pd.read_csv(os.path.join(EV, "decisions.csv"), parse_dates=["date"]); decs = decs[(decs["window"] == WIN) & (decs["exit"] == EXIT)]
     extras = pd.read_csv(os.path.join(EV, "trade_extras.csv"), parse_dates=["entry_decision"]); extras = extras[(extras["window"] == WIN) & (extras["exit"] == EXIT)]
     summ = pd.read_csv(os.path.join(EV, "summary.csv"))
+    trs = pd.read_csv(os.path.join(EV, "trades.csv"), parse_dates=["decision_date", "trade_date"]); trs = trs[(trs["window"] == WIN) & (trs["exit"] == EXIT)]
     R = {}; checks = {"z_max_abs_diff": 0.0, "rule_mismatch": [], "rule_trades_matched": 0}
     for pid, pair in enumerate(PAIRS):
         dates, P, Z, chk = paths_for(pair, pid, px, D); checks["z_max_abs_diff"] = max(checks["z_max_abs_diff"], chk); L = P.shape[1]
@@ -166,11 +167,35 @@ def main():
         ye = nv.groupby(nv.index.year).last(); y0 = nv.iloc[[0]].rename(index=lambda d: d.year - 1); yy = pd.concat([y0, ye]); yr = (yy / yy.shift(1) - 1).dropna()
         for y_, row in yr.iterrows():
             yearly.append({"pair": p, "year": int(y_), "strategy": float(row["nav"]), "5050": float(row["5050_buyhold"]), "excess": float(row["nav"] - row["5050_buyhold"])})
-        R[p]["rel"] = rel
+        R[p]["rel"] = rel; R[p]["lrel"] = np.log(rel)
         outp.append({"pair": p, "first": nv.index[0].date().isoformat(), "last": nv.index[-1].date().isoformat(), "cagr": cg(nv["nav"]), "cagr_5050": cg(nv["5050_buyhold"]), "excess_cagr": cg(nv["nav"]) - cg(nv["5050_buyhold"]),
                      "ir": float(e.mean() * 252 / (e.std(ddof=1) * np.sqrt(252))), "years_ahead": float((yr["nav"] > yr["5050_buyhold"]).mean()), "n_years": int(len(yr)),
                      "rel_maxdd": float((rel / rel.cummax() - 1).min()), "rel_end": float(rel.iloc[-1])})
     OPF = pd.DataFrame(outp); YE = pd.DataFrame(yearly); OPF.to_csv(os.path.join(OUT, "outperformance.csv"), index=False); YE.to_csv(os.path.join(OUT, "yearly_excess.csv"), index=False)
+
+    # ---------------------------------------------------------------- 5. where the shortfall comes from (trade by trade)
+    # ln(strategy / 50/50) changes only through what the sleeve holds; cut at the close before each trade day it telescopes
+    # exactly into one piece per holding period: each trade, and each neutral stretch between trades.
+    seg_rows, sc_rows = [], []
+    for p in ORDER:
+        lr = R[p]["lrel"]; days = lr.index; tp = trs[trs["pair"] == p].sort_values("trade_date").reset_index(drop=True)
+        dd = decs[decs["pair"] == p]["date"].sort_values().to_numpy()
+        bnd = [float(lr.iloc[max(days.searchsorted(d) - 1, 0)]) for d in tp["trade_date"]] + [float(lr.iloc[-1])]
+        for i, r in tp.iterrows():
+            last = i + 1 == len(tp); end_dec = tp["decision_date"].iloc[i + 1] if not last else None
+            wk = int(((dd >= np.datetime64(r["decision_date"])) & ((dd < np.datetime64(end_dec)) if end_dec is not None else True)).sum())
+            seg_rows.append({"pair": p, "state": r["to"], "kind": "trade" if r["to"] in ("A", "B") else "neutral", "start": r["trade_date"].date().isoformat(),
+                             "end": (tp["trade_date"].iloc[i + 1] if not last else days[-1]).date().isoformat(), "open": bool(last and r["to"] in ("A", "B")),
+                             "weeks": wk, "log_contrib": bnd[i + 1] - bnd[i]})
+        sg = pd.DataFrame([x for x in seg_rows if x["pair"] == p]); tt = sg[sg["kind"] == "trade"].sort_values("log_contrib")
+        assert abs(sg["log_contrib"].sum() - float(lr.iloc[-1])) < 1e-9, p                     # the pieces add up to the whole
+        lng, sht = tt[tt["weeks"] > 52], tt[tt["weeks"] <= 52]
+        sc_rows.append({"pair": p, "first": days[0].date().isoformat(), "last": days[-1].date().isoformat(), "total": float(lr.iloc[-1]), "trades": len(tt),
+                        "long_n": len(lng), "long_sum": float(lng["log_contrib"].sum()), "short_n": len(sht), "short_sum": float(sht["log_contrib"].sum()),
+                        "neutral_sum": float(sg[sg["kind"] == "neutral"]["log_contrib"].sum()), "worst3_sum": float(tt["log_contrib"].head(3).sum()),
+                        "worst3_weeks": ", ".join(str(int(w)) for w in tt["weeks"].head(3)), "corr_weeks": float(np.corrcoef(tt["weeks"], tt["log_contrib"])[0, 1]) if len(tt) > 2 else float("nan")})
+    SEG = pd.DataFrame(seg_rows); SC = pd.DataFrame(sc_rows); SEG.to_csv(os.path.join(OUT, "shortfall_by_trade.csv"), index=False); SC.to_csv(os.path.join(OUT, "shortfall_summary.csv"), index=False)
+    pct_x = lambda v: (np.exp(v) - 1) * 100                                                    # noqa: E731  (log piece -> % change of strategy / 50/50)
 
     # ---------------------------------------------------------------- 2. event study (per pair and pooled index pairs)
     ev_rows = []; EV_ = {}
@@ -245,10 +270,14 @@ def main():
             cells.append(f"{f_(r_['real'])} ({f_(r_['rw_median'])}, {pq(r_['pct'])})")
         md.append(f"| {'six index pairs' if p == 'index' else nice(p)} | " + " | ".join(cells) + " |")
     md += ["\n_The real trades recomputed close to close against T03's fill-based extras: correlation " + ", ".join(f"{nice(p)} {R[p]['corr_fill']:.3f} ({R[p]['n_fill_matched']} trades)" for p in ORDER) + "._"]
+    md += ["\n## 5. Where the shortfall against 50/50 comes from (change of strategy ÷ 50/50 during each holding period)\n",
+           "The pieces multiply exactly to the whole: trades held over 52 weeks, trades held 52 weeks or less, and the neutral stretches between trades.\n",
+           "| pair | window | strategy ÷ 50/50, whole window | trades held over 52 weeks | trades held 52 weeks or less | neutral stretches | the 3 worst trades (weeks held) | correlation of weeks held with the trade's piece |", "|---|---|---|---|---|---|---|---|"]
+    md += [f"| {nice(r['pair'])} | {r['first']} → {r['last']} | {pct_x(r['total']):+.1f}% | {r['long_n']} trade{'s' if r['long_n'] != 1 else ''}: {pct_x(r['long_sum']):+.1f}% | {r['short_n']} trade{'s' if r['short_n'] != 1 else ''}: {pct_x(r['short_sum']):+.1f}% | {pct_x(r['neutral_sum']):+.1f}% | {pct_x(r['worst3_sum']):+.1f}% ({r['worst3_weeks']}) | {r['corr_weeks']:+.2f} |" for _, r in SC.iterrows()]
     open(os.path.join(OUT, "E04_results.md"), "w", encoding="utf-8").write("\n".join(md) + "\n")
 
     # ---------------------------------------------------------------- figures
-    figs = {}; titles = {"op": {}, "ev": {}, "ic": {}}
+    figs = {}; titles = {"op": {}, "ev": {}, "ic": {}, "sf": {}}
     fO = make_subplots(rows=2, cols=1, row_heights=[0.62, 0.38], vertical_spacing=0.1, subplot_titles=("strategy ÷ 50/50 bought once (above 1 = ahead)", "calendar-year return: strategy − 50/50"))
     fE, fI = go.Figure(), go.Figure()
     for p in ORDER:
@@ -301,6 +330,28 @@ def main():
     def rr_txt(p, s):
         r_ = g(RRS, p, stat=s); v = r_["real"]
         return (f"{v * 100:+.1f}%" if s in ("mean", "median") else (f"{v * 100:.0f}%" if s in ("hit", "long") else f"{v:.0f}" if s == "n" else f"{v:.1f}"))
+    # 5. per pair: each trade's piece of the shortfall at its entry date, coloured by how long it was held
+    fS = go.Figure(); BUCKET = (("up to 13 weeks", 0, 13, AQUA), ("14–52 weeks", 14, 52, BLUE), ("over 52 weeks", 53, 10 ** 6, ORANGE))
+    for p in ORDER:
+        vis = p == DEFAULT_PAIR; tt = SEG[(SEG["pair"] == p) & (SEG["kind"] == "trade")]; sc_ = SC[SC["pair"] == p].iloc[0]
+        for lab, lo_, hi_, colr in BUCKET:
+            b_ = tt[(tt["weeks"] >= lo_) & (tt["weeks"] <= hi_)]
+            fS.add_trace(go.Bar(x=pd.to_datetime(b_["start"]), y=pct_x(b_["log_contrib"]), width=40 * 86400000, marker={"color": colr}, name=f"held {lab}", legendgroup=lab, meta=p, visible=vis,
+                                text=[f"{w}w" for w in b_["weeks"]], textposition="outside", textfont={"size": 9}, constraintext="none", cliponaxis=False,
+                                customdata=np.c_[b_["start"], b_["end"], b_["weeks"], ["still open" if o else "" for o in b_["open"]]],
+                                hovertemplate="%{customdata[0]} → %{customdata[1]} %{customdata[3]}: %{customdata[2]} weeks held<br>strategy ÷ 50/50 changed %{y:+.1f}%<extra></extra>"))
+        titles["sf"][p] = E1.two_line(f"{nice(p)} · {sc_['first']} → {sc_['last']} · strategy ÷ 50/50 {pct_x(sc_['total']):+.1f}% over the window · the {sc_['long_n']} trades held over 52 weeks: {pct_x(sc_['long_sum']):+.1f}%",
+                                      f"the other {sc_['short_n']} trades together {pct_x(sc_['short_sum']):+.1f}%, the neutral stretches {pct_x(sc_['neutral_sum']):+.1f}%; each bar = one trade at its entry date, its height the change of strategy ÷ 50/50 while it was held, its label the weeks held")
+    fS.add_hline(y=0, line={"color": AXIS, "width": 1}); fS.update_yaxes(ticksuffix="%", title={"text": "change of strategy ÷ 50/50 during the trade", "font": {"color": INK2}})
+    fS.update_layout(barmode="overlay"); figs["sf"] = E1.style(fS, titles["sf"][DEFAULT_PAIR], 480, legend_top=True)
+    ti = SEG[(SEG["kind"] == "trade") & SEG["pair"].isin(INDEX_PAIRS)]
+    f = go.Figure([go.Scatter(x=ti["weeks"], y=pct_x(ti["log_contrib"]), mode="markers", marker={"size": 8, "color": [ORANGE if w > 52 else (BLUE if w > 13 else AQUA) for w in ti["weeks"]], "opacity": 0.8},
+                              customdata=np.c_[[nice(q) for q in ti["pair"]], ti["start"], ti["end"]], hovertemplate="%{customdata[0]} · %{customdata[1]} → %{customdata[2]}<br>%{x} weeks held · strategy ÷ 50/50 %{y:+.1f}%<extra></extra>", showlegend=False)])
+    f.add_hline(y=0, line={"color": AXIS, "width": 1}); f.add_vline(x=52, line={"color": AXIS, "width": 1, "dash": "dot"})
+    f.update_xaxes(title={"text": "weeks held", "font": {"color": INK2}}); f.update_yaxes(ticksuffix="%", title={"text": "change of strategy ÷ 50/50 during the trade", "font": {"color": INK2}})
+    ix = SC[SC["pair"].isin(INDEX_PAIRS)]
+    figs["sf_all"] = E1.style(f, E1.two_line(f"Every trade on the six index pairs: how long it was held against what it did to strategy ÷ 50/50 · {len(ti)} trades",
+                                             f"the {int(ix['long_n'].sum())} trades held over a year (right of the dotted line) add up, in log terms across the six pairs, to {pct_x(ix['long_sum'].sum()):+.1f}%; the other {int(ix['short_n'].sum())} to {pct_x(ix['short_sum'].sum()):+.1f}%"), 460, legend=False)
     figs["h_rr"] = heat([[g(RRS, p, stat=s)["pct"] for s, _, _ in STATS] for p in keys], [lab for _, lab, _ in STATS], rows_lab,
                         [[rr_txt(p, s) for s, _, _ in STATS] for p in keys],
                         [[f"real {rr_txt(p, s)}, random walks' median {g(RRS, p, stat=s)['rw_median'] * (100 if s in ('hit', 'long', 'mean', 'median') else 1):.1f}{'%' if s in ('hit', 'long', 'mean', 'median') else ''}, percentile {g(RRS, p, stat=s)['pct']:.1f}" for s, _, _ in STATS] for p in keys],
@@ -311,6 +362,8 @@ def main():
         t = html.escape(json.dumps(titles[key]), quote=True)
         tb = "".join(f"<div data-pair='{html.escape(p, quote=True)}'{'' if p == DEFAULT_PAIR else ' hidden'}>{tables[p]}</div>" for p in ORDER)
         return f"<div class='card per-pair' data-titles='{t}'>{E1.html_fig(fig, first=first)}<details><summary>Table view</summary>{tb}</details></div>"
+    tab_sf = {p: E1.tbl(["entered", "exited", "leg", "weeks held", "strategy ÷ 50/50 during the trade"], [[r_["start"], r_["end"] + (" (open)" if r_["open"] else ""), r_["state"], int(r_["weeks"]), f"{pct_x(r_['log_contrib']):+.1f}%"]
+                                                                                                      for _, r_ in SEG[(SEG["pair"] == p) & (SEG["kind"] == "trade")].sort_values("log_contrib").iterrows()]) for p in ORDER}
     tab_op = {p: E1.tbl(["year", "strategy", "50/50", "excess"], [[int(r_["year"]), f"{r_['strategy'] * 100:+.1f}%", f"{r_['5050'] * 100:+.1f}%", f"{r_['excess'] * 100:+.1f} pp"] for _, r_ in YE[YE["pair"] == p].iterrows()]) for p in ORDER}
     tab_ev = {p: E1.tbl(["weeks after", "the ratio", "random walks' median", "5th–95th", "percentile"], [[int(r_["k"]), f"{r_['real'] * 100:+.2f}%", f"{r_['rw_median'] * 100:+.2f}%", f"{r_['rw_p5'] * 100:+.2f}% … {r_['rw_p95'] * 100:+.2f}%", E1.fpct(r_["pct"])] for _, r_ in EVS[EVS["pair"] == p].iterrows() if int(r_["k"]) in (1, 2, 4, 8, 13, 26, 39, 52)]) for p in ORDER}
     tab_ic = {p: E1.tbl(["horizon", "IC", "random walks 5th–95th", "percentile", "first half", "second half"], [[f"{int(r_['k'])} wk", f"{r_['ic']:+.3f}", f"{r_['rw_p5']:+.3f} … {r_['rw_p95']:+.3f}", E1.fpct(r_["pct"]), f"{r_['ic_first_half']:+.3f}", f"{r_['ic_second_half']:+.3f}"] for _, r_ in ICS[ICS["pair"] == p].iterrows()]) for p in ORDER}
@@ -339,6 +392,11 @@ def main():
          "<div class='card'>" + E1.html_fig(figs["h_ic"]) + "</div>",
          "<h2>4 · The rule on random walks: signal or mechanics?</h2><p class='note'>An exit at a <i>trailing</i> mean wins often on any series, because the mean also moves towards the ratio. So a high hit rate means something only if it beats what the same rule gives on random walks. Trades after the warm-up, relative return decision close to decision close (no cost).</p>",
          "<div class='card'>" + E1.html_fig(figs["h_rr"]) + "<details><summary>Table view</summary>" + E1.tbl(["pair"] + [lab for _, lab, _ in STATS], [[("six index pairs" if p == "index" else nice(p))] + [f"{rr_txt(p, s)} ({E1.fpct(g(RRS, p, stat=s)['pct'])})" for s, _, _ in STATS] for p in keys]) + "<p class='note'>The real value (percentile among the random walks).</p></details></div>",
+         "<h2>5 · Where the shortfall comes from</h2><p class='note'>The strategy's value against 50/50 changes only through what the sleeve holds, so it splits exactly into one piece per holding period: each trade, and each neutral stretch between trades. Orange = held over 52 weeks.</p>",
+         "<div class='card'>" + E1.tbl(["pair", "window", "strategy ÷ 50/50, whole window", "trades held over 52 weeks", "trades held 52 weeks or less", "neutral stretches", "the 3 worst trades (weeks held)", "correlation of weeks held with the trade's piece"],
+                                     [[nice(r_["pair"]), f"{r_['first']} → {r_['last']}", f"{pct_x(r_['total']):+.1f}%", f"{r_['long_n']} trade{'s' if r_['long_n'] != 1 else ''}: {pct_x(r_['long_sum']):+.1f}%", f"{r_['short_n']} trade{'s' if r_['short_n'] != 1 else ''}: {pct_x(r_['short_sum']):+.1f}%", f"{pct_x(r_['neutral_sum']):+.1f}%", f"{pct_x(r_['worst3_sum']):+.1f}% ({r_['worst3_weeks']})", f"{r_['corr_weeks']:+.2f}"] for _, r_ in SC.iterrows()]) + "<p class='note'>The pieces multiply exactly to the whole-window figure. Hindsight split: which trades will run long is not known at entry.</p></div>",
+         per_pair("sf", figs["sf"], tab_sf),
+         "<div class='card'>" + E1.html_fig(figs["sf_all"]) + "</div>",
          "<h2>Method and limits</h2><div class='card'><ul>"
          f"<li><b>Paths.</b> E01's random walks: each pair's real first {E1.BURN + 1} weeks, then the point-in-time weekly residuals with E01's random signs (seed default_rng([{E1.SEED_SIGNS}, pair_id])) plus the expanding drift; z = (ratio − trailing 52-week mean) ÷ trailing sd on every path (row 0 equals E01's z to {checks['z_max_abs_diff']:.0e}).</li>"
          f"<li><b>The rule copy.</b> Vectorised over the paths; on the real ratio it reproduces all {checks['rule_trades_matched']} of T03's entries (date and leg) exactly, so the random walks run the identical rule. Relative return of a trade = ln(r_exit ÷ r_entry) for long a, the negative for long b, decision close to decision close; against T03's fill-based extras the correlation is " + ", ".join(f"{R[p]['corr_fill']:.2f}" for p in INDEX_PAIRS) + " on the index pairs.</li>"
