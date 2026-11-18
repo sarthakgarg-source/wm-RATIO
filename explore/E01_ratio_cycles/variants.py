@@ -26,33 +26,41 @@ def z_at_decisions(pf: pd.DataFrame, w: str) -> pd.Series:
     return z if f == "W" else z.reindex(dec)
 
 
-def rule_states(z: np.ndarray):
-    """The engine's state machine (T03.md §3 step 5) written on z: z < -1 is r < mean - sd, z >= 0 is r >= mean."""
+def rule_states(z: np.ndarray, thr: float = 1.0, allow=None):
+    """The engine's state machine (T03.md §3 step 5) written on z: z < -1 is r < mean - sd, z >= 0 is r >= mean.
+    thr = the extreme (1 = T03's band); allow = optional booleans per row: an entry is taken only where allow is True
+    (E05's filter; a first cross that is not allowed is not taken, and the next week is no longer a first cross)."""
     state = "N"; prev = None; states, reasons = [], []
-    for x in z:
+    for i, x in enumerate(z):
         if np.isnan(x):
             states.append(state); reasons.append("no band"); prev = None; continue
-        pos = -1 if x < -1 else (1 if x > 1 else 0); reason = ""
+        pos = -1 if x < -thr else (1 if x > thr else 0); reason = ""
         if (state == "A" and x >= 0) or (state == "B" and x <= 0):
             state = "N"; reason = "exit: back at the mean"
-        if state == "N":
+        if state == "N" and (allow is None or allow[i]):
             if pos == -1 and prev in (0, 1):
-                state = "A"; reason = (reason + "; " if reason else "") + "enter A: first week below mean - 1 sd"
+                state = "A"; reason = (reason + "; " if reason else "") + f"enter A: first week below mean - {thr:g} sd"
             elif pos == 1 and prev in (0, -1):
-                state = "B"; reason = (reason + "; " if reason else "") + "enter B: first week above mean + 1 sd"
+                state = "B"; reason = (reason + "; " if reason else "") + f"enter B: first week above mean + {thr:g} sd"
         states.append(state); reasons.append(reason); prev = pos
     return states, reasons
 
 
-def run_variant(px: dict, pair: str, w: str, cost: float = COST) -> dict:
-    pf = pair_frame(px, pair, "plain"); z = z_at_decisions(pf, w)
-    states, reasons = rule_states(z.to_numpy())
+def run_states(pf: pd.DataFrame, z: pd.Series, cost: float = COST, thr: float = 1.0, allow=None, comp: bool = True) -> dict:
+    """The rule on a pair frame and its z at the decision days, through the engine's book."""
+    states, reasons = rule_states(z.to_numpy(), thr, allow)
     dec = pd.DataFrame({"z": z.to_numpy(), "state_after": states, "reason": reasons}, index=z.index); dec.index.name = "date"
     banded = dec[dec["z"].notna()]; dec_index = banded.index; targets = banded["state_after"].tolist()
     nav, trades = book(pf, dec_index, targets, cost, PIT(), record_trades=True)
-    comp = comparators(pf, dec_index[0], cost, dec_index, PIT())
-    tr = pd.DataFrame(trades); ex = pd.DataFrame(trade_extras(trades))
-    return {"pair": pair, "window": w, "pf": pf, "decisions": dec, "nav": nav, "bh": comp["5050_buyhold"], "trades": tr, "extras": ex}
+    out = {"pf": pf, "decisions": dec, "nav": nav, "trades": pd.DataFrame(trades), "extras": pd.DataFrame(trade_extras(trades))}
+    if comp:
+        out["bh"] = comparators(pf, dec_index[0], cost, dec_index, PIT())["5050_buyhold"]
+    return out
+
+
+def run_variant(px: dict, pair: str, w: str, cost: float = COST, thr: float = 1.0) -> dict:
+    pf = pair_frame(px, pair, "plain"); z = z_at_decisions(pf, w)
+    return {"pair": pair, "window": w, **run_states(pf, z, cost, thr)}
 
 
 def check_against_t03(v: dict) -> list:

@@ -1,0 +1,87 @@
+{
+ "run_date": "2026-11-18",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
+ },
+ "perms": 2000,
+ "seed": "default_rng([107, z_window_id, extreme_id, corr_period_id, falling_over_id, pool_id])",
+ "controls": {
+  "z_windows": [
+   "w52",
+   "w26",
+   "w13",
+   "d250",
+   "d120",
+   "d60",
+   "d20"
+  ],
+  "extremes": [
+   "t10",
+   "t15",
+   "t20"
+  ],
+  "corr_periods": [
+   "cw13",
+   "cw26",
+   "cw52",
+   "cd20",
+   "cd60",
+   "cd120",
+   "cd250"
+  ],
+  "falling_over_weeks": [
+   4,
+   13,
+   26
+  ]
+ },
+ "defaults": {
+  "z_window": "w52",
+  "extreme": "t10",
+  "corr_period": "cw52",
+  "falling_over": 13,
+  "pair": "N100|SC100"
+ },
+ "cost_bps": 20.8,
+ "min_group": 5,
+ "checks": {
+  "t03_mismatch": [],
+  "allow_all_mismatch": [],
+  "e04_excess_max_abs_diff": 9.71445146547012e-17,
+  "corr_look_ahead": [
+   120,
+   []
+  ]
+ },
+ "notable": [
+  405,
+  1764
+ ],
+ "filtered_settings_falling_beats_unfiltered_in_4_of_6": 331,
+ "filtered_settings": 441,
+ "filtered_settings_not_falling_beats_unfiltered_in_4_of_6": 404,
+ "filtered_settings_falling_beats_not_falling_in_4_of_6": 71,
+ "filtered_settings_not_falling_beats_falling_in_4_of_6": 259,
+ "direction_mean_extra": {
+  "gold": {
+   "worse": 39,
+   "better": 65,
+   "n": 441
+  },
+  "index": {
+   "worse": 112,
+   "better": 8,
+   "n": 441
+  }
+ },
+ "index_cases_ahead_of_5050": {
+  "unfiltered": 84,
+  "falling": 313,
+  "not_falling": 647,
+  "cases": 2646
+ },
+ "trades": 6637,
+ "seconds": 129
+}

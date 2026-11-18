@@ -56,6 +56,11 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              switches every section: the trade sections run T03's rule on the chosen window's band (variants.py; the 52-week
              run is checked to be T03 exactly). E03 also has a correlation-period dropdown (the legs' correlation over 13 / 26 /
              52 weeks or 20 / 60 / 120 / 250 days) (2026-11-17)
+             E05_corr_falling/ (E05.md design; falling.py → out/E05_falling.html, E05_results.md, CSVs) — does the rule do
+             better when the legs' correlation is falling as z reaches its extreme? T03's rule with a chosen extreme (±1,
+             ±1.5, ±2), its trades split by falling / not falling correlation (lower than 4, 13 or 26 weeks earlier) with
+             within-pair shuffles, and the rule entering only on falling (or only on not-falling) correlation against 50/50;
+             controls for pair, z window, extreme, correlation period and lookback (2026-11-18)
 ```
 
 **Results (run `headline`, 2026-11-17):** the rule is **REFUTED** at the MDE (2.8–12.1 pp/yr). T02 at the 95th percentile:
