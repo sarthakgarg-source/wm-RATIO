@@ -61,6 +61,10 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              ±1.5, ±2), its trades split by falling / not falling correlation (lower than 4, 13 or 26 weeks earlier) with
              within-pair shuffles, and the rule entering only on falling (or only on not-falling) correlation against 50/50;
              controls for pair, z window, extreme, correlation period and lookback (2026-11-18)
+             E06_trade_search/ (E06.md design; search.py → out/E06_trades.html, E06_results.md, CSVs) — SEARCH: every
+             trade of the rule on all z windows with 24 conditions at entry; condition by condition; 7,211 rules found on
+             2006–2015 and checked on 2016–2026 and the gold pairs, against searches on shuffled outcomes; year by year and
+             against random skipping; a sortable explorer of every trade (2026-11-18)
 ```
 
 **Results (run `headline`, 2026-11-17):** the rule is **REFUTED** at the MDE (2.8–12.1 pp/yr). T02 at the 95th percentile:

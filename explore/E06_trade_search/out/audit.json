@@ -1,0 +1,101 @@
+{
+ "run_date": "2026-11-18",
+ "status": "EXPLORATORY (search)",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
+ },
+ "perms": 2000,
+ "snoop_draws": 1000,
+ "split": "2016-01-01",
+ "seeds": {
+  "univariate": "default_rng([108, window_id, condition_id]) (gold: window_id 99)",
+  "snooping": "default_rng([109, 0])",
+  "validation": "default_rng([110, 0])"
+ },
+ "conditions": [
+  "z_depth",
+  "zslope4",
+  "since_zero",
+  "band_width",
+  "breadth",
+  "lag4",
+  "lag13",
+  "held13",
+  "peer13",
+  "held52",
+  "peer52",
+  "trend52",
+  "trend104",
+  "long_cheap",
+  "corr26",
+  "corr52",
+  "corr52_chg13",
+  "vol_held",
+  "vol_peer",
+  "vol_ratio",
+  "mkt52",
+  "mkt_dd",
+  "mkt_ma200",
+  "held_first"
+ ],
+ "min_support": {
+  "share": 0.15,
+  "n": 40,
+  "applied": 120.44999999999999
+ },
+ "checks": {
+  "t03_mismatch": [],
+  "e03_max_abs_diff": 4.440892098500626e-16,
+  "e04_piece_max_abs_diff": 9.974659986866641e-17,
+  "cut_checks": 840,
+  "cut_violations": []
+ },
+ "trades": 2886,
+ "closed": 2830,
+ "search": {
+  "single": 140,
+  "eligible_rules": 7211,
+  "discovery_trades": 803,
+  "validation_trades": 1155,
+  "gold_trades": 872,
+  "best_discovery_mean": 0.017437461763620377,
+  "best_discovery_pct_among_noise_searches": 100.0,
+  "spearman_discovery_vs_validation": 0.255616935681941,
+  "rules_validating_high": 1709,
+  "rules_validating_low": 2030
+ },
+ "added_after_first_run": {
+  "random_filters": {
+   "draws": 200,
+   "seed": "default_rng([111, rule, pair_id, window_id])"
+  },
+  "year_by_year": [
+   {
+    "rule_rank": 1,
+    "years_with_selected": 19,
+    "years_compared": 13,
+    "selected_better": 8,
+    "share_in_3_busiest_years": 0.4475920679886686,
+    "busiest_years": "2007, 2024, 2016"
+   },
+   {
+    "rule_rank": 2,
+    "years_with_selected": 12,
+    "years_compared": 9,
+    "selected_better": 7,
+    "share_in_3_busiest_years": 0.7480106100795756,
+    "busiest_years": "2024, 2007, 2021"
+   },
+   {
+    "rule_rank": 3,
+    "years_with_selected": 20,
+    "years_compared": 20,
+    "selected_better": 14,
+    "share_in_3_busiest_years": 0.29638009049773756,
+    "busiest_years": "2024, 2025, 2007"
+   }
+  ]
+ },
+ "seconds": 174
+}
