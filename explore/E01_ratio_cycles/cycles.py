@@ -610,8 +610,8 @@ def main():
                                     hovertemplate="z %{x:+.2f} ± 0.125: %{y:.1f}% of random-walk " + unit + "<extra></extra>"))
             titles["z"][mw] = two_line(f"{nice(p)} · z window {lab}{' (daily closes)' if f == 'D' else ''} · {r['zw_first'][f]} → {r['last']} · latest z {q['last'][0]:+.2f} ({q['last'][1]})",
                                        f"beyond ±1 in {aw['beyond1'] * 100:.0f}% of {unit} (random walks {nmw['beyond1'] * 100:.0f}%), beyond ±2 in {aw['beyond2'] * 100:.1f}% ({nmw['beyond2'] * 100:.1f}%); grey strip = inside ±1")
-        titles["ratio"][p] = two_line(f"{nice(p)} · {r['ratio_first']} → {r['last']} · lower panel from {r['first']} (after a {BURN}-week warm-up)",
-                                      f"turning point = a reversal of one typical half-year move, from earlier weeks only: {sw['h_pct_min'] * 100:.1f}–{sw['h_pct_max'] * 100:.1f}% over the window, {sw['h_pct_last'] * 100:.1f}% now")
+            titles["ratio"][mw] = two_line(f"{nice(p)} · {r['ratio_first']} → {r['last']} · middle panel from {r['first']} (after a {BURN}-week warm-up) · bottom panel: z window {lab}{' (daily closes)' if f == 'D' else ''} from {r['zw_first'][f]}",
+                                           f"turning point = a reversal of one typical half-year move, from earlier weeks only: {sw['h_pct_min'] * 100:.1f}–{sw['h_pct_max'] * 100:.1f}% over the window, {sw['h_pct_last'] * 100:.1f}% now")
         cv = sp["curve"]
         fB.add_trace(go.Scatter(x=cv["period"], y=cv["lo"], mode="lines", line={"width": 0}, hoverinfo="skip", showlegend=False, meta=p, visible=vis))
         fB.add_trace(go.Scatter(x=cv["period"], y=cv["hi"], mode="lines", line={"width": 0}, fill="tonexty", fillcolor=NULL_FILL, name="random walks, middle 90%", hoverinfo="skip", meta=p, visible=vis))
@@ -637,7 +637,7 @@ def main():
     for y in (-2, 2):
         fA.add_hline(y=y, line={"color": AXIS, "width": 1, "dash": "dot"}, row=3, col=1)
     fA.update_yaxes(title={"text": "z", "font": {"color": INK2}}, row=3, col=1)
-    figs["ratio"] = style(fA, titles["ratio"][DEFAULT_PAIR], 900); fA.update_layout(margin={"t": 100})
+    figs["ratio"] = style(fA, titles["ratio"][DEFAULT_PAIR + ZW.SEP + ZW.DEFAULT], 900); fA.update_layout(margin={"t": 100})
     fZ.add_vrect(x0=-1, x1=1, fillcolor=BAND_FILL, line={"width": 0}, layer="below")
     for x in (-2, 2):
         fZ.add_vline(x=x, line={"color": AXIS, "width": 1, "dash": "dot"})

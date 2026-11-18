@@ -1,5 +1,5 @@
 {
- "run_date": "2026-11-17",
+ "run_date": "2026-11-18",
  "status": "EXPLORATORY",
  "inputs": {
   "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
@@ -145,5 +145,5 @@
    "Micro250 \u00f7 GoldMCX VR 26 wk (95.0 \u2192 93.7)"
   ]
  },
- "seconds": 59
+ "seconds": 77
 }
