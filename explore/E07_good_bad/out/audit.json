@@ -1,0 +1,145 @@
+{
+ "run_date": "2026-11-19",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
+ },
+ "perms": 2000,
+ "null_draws": {
+  "lr": 200,
+  "gb": 100
+ },
+ "random_filters": 200,
+ "seeds": {
+  "measures": "default_rng([120, window_id, measure_id])",
+  "walkforward_null": "default_rng([121, model_id, draw])",
+  "random_filters": "default_rng([122, model_id, pair_id, window_id, draw])"
+ },
+ "checks": {
+  "t03_mismatch": [],
+  "e06_trades_unmatched": 0,
+  "e06_max_abs_diff": 4.440892098500626e-16,
+  "states_base_mismatch": [],
+  "base_nav_mismatch": [],
+  "cut_checks": 840,
+  "cut_violations": [],
+  "train_trades_closed_before_year": true,
+  "random_rate_max_abs_dev": 0.006087866108786644
+ },
+ "trades": 2886,
+ "closed": 2830,
+ "walkforward": {
+  "lr": {
+   "auc": 0.465,
+   "pct": 1.0,
+   "null_med": 0.501,
+   "null_hi": 0.525,
+   "n_ix": 1614,
+   "n_gold": 872
+  },
+  "gb": {
+   "auc": 0.481,
+   "pct": 5.0,
+   "null_med": 0.503,
+   "null_hi": 0.524,
+   "n_ix": 1614,
+   "n_gold": 872
+  }
+ },
+ "filters": {
+  "gb": {
+   "beats_every": 27,
+   "ahead_5050": 2,
+   "every_ahead_5050": 0,
+   "above_random_median": 16,
+   "notable": 3,
+   "median_pct": 39.0,
+   "n": 42
+  },
+  "lr": {
+   "beats_every": 25,
+   "ahead_5050": 1,
+   "every_ahead_5050": 0,
+   "above_random_median": 15,
+   "notable": 1,
+   "median_pct": 28.7,
+   "n": 42
+  }
+ },
+ "variants_all_windows": {
+  "base": [
+   0,
+   0,
+   0,
+   0,
+   -0.020862,
+   -0.021915
+  ],
+  "zs20": [
+   34,
+   33,
+   3,
+   4,
+   -0.016002,
+   -0.015099
+  ],
+  "zs25": [
+   28,
+   27,
+   3,
+   2,
+   -0.018238,
+   -0.017993
+  ],
+  "zs30": [
+   16,
+   17,
+   1,
+   0,
+   -0.021559,
+   -0.02172
+  ],
+  "ts13": [
+   29,
+   33,
+   0,
+   0,
+   -0.017208,
+   -0.017249
+  ],
+  "ts26": [
+   22,
+   23,
+   0,
+   0,
+   -0.024492,
+   -0.024539
+  ],
+  "ts52": [
+   8,
+   9,
+   0,
+   0,
+   -0.022528,
+   -0.024992
+  ],
+  "recross": [
+   23,
+   18,
+   3,
+   3,
+   -0.01629,
+   -0.017815
+  ],
+  "rebound": [
+   19,
+   15,
+   0,
+   0,
+   -0.020484,
+   -0.021614
+  ]
+ },
+ "seconds": 388
+}
