@@ -8,6 +8,7 @@ import hashlib
 import os
 import re
 
+import numpy as np
 import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -73,6 +74,51 @@ def load_daily() -> dict:
         out[name] = _clean(raw[raw["index_key"] == key][["date", "open", "high", "low", "close"]])
     g = pd.read_csv(open_approved("MAUc1_daily.csv"), parse_dates=["Date"]).rename(columns={"Date": "date", "OPEN": "open", "HIGH": "high", "LOW": "low", "CLOSE": "close"})
     out[GOLD] = _clean(g[["date", "open", "high", "low", "close"]])
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------- US ETFs (added 2026-11-19)
+US_PRICES, US_DIVIDENDS = "us_etf_ohlcv.csv", "us_etf_dividends.csv"
+US_START = "2010-01-01"   # the source's dividend history starts in 2010: earlier prices cannot be put on a total-return basis
+
+
+def total_return(s: pd.DataFrame, dv: pd.DataFrame) -> pd.DataFrame:
+    """Rule H4 (US ETFs): dividends reinvested. Every open/high/low/close before an ex-date is multiplied by
+    (1 − D ÷ the last close before the ex-date), compounded backwards, so the latest prices are the traded ones and a
+    holder's return includes every distribution. D = the sum of the gross amounts on that ex-date; zero amounts and
+    ex-dates outside the price history are ignored. `s`: date, open, high, low, close (raw, sorted); `dv`: ex_date, gross."""
+    s = s.sort_values("date").reset_index(drop=True).copy(); dates = s["date"].to_numpy()
+    d = dv[dv["gross"] > 0].groupby("ex_date")["gross"].sum()
+    f = pd.Series(1.0, index=s.index)
+    for ex, amt in d.items():
+        k = int(np.searchsorted(dates, np.datetime64(ex), side="left"))   # the first trading day on or after the ex-date
+        if k <= 0 or k >= len(s):
+            continue
+        f.iloc[:k] *= 1.0 - amt / float(s["close"].iloc[k - 1])
+    for col in ("open", "high", "low", "close"):
+        s[col] = s[col] * f.to_numpy()
+    return s
+
+
+def us_start(listing: pd.Timestamp) -> pd.Timestamp:
+    """Rule H5 (US ETFs): the launch period is dropped. A series starts on the first 1 January at least 12 months after
+    its first day in the file, and not before 2010-01-01. (The review found the thin early trading there: missing
+    sessions, and closes that disagree with a second source, e.g. PDBC in 2015.)"""
+    t = pd.Timestamp(listing) + pd.DateOffset(years=1)
+    jan1 = pd.Timestamp(year=t.year if (t.month == 1 and t.day == 1) else t.year + 1, month=1, day=1)
+    return max(pd.Timestamp(US_START), jan1)
+
+
+def load_us_etf() -> dict:
+    """Each US ETF's daily bars from its start (rule H5) on a total-return basis (rule H4), then the same handling rules
+    H1–H3 as load_daily(): dict ticker -> DataFrame(date index; open, high, low, close, fill, stale_ohl). US dollars.
+    The source has closes only on most rows (blank open/high/low), so rule H3 makes the fill price the close there."""
+    raw = pd.read_csv(open_approved(US_PRICES), parse_dates=["date"]); dv = pd.read_csv(open_approved(US_DIVIDENDS), parse_dates=["ex_date"])
+    out = {}
+    for t, g in raw.groupby("ticker"):
+        g = g.dropna(subset=["close"]).drop_duplicates("date")
+        s = g[g["date"] >= us_start(g["date"].min())][["date", "open", "high", "low", "close"]]
+        out[t] = _clean(total_return(s, dv[dv["ticker"] == t]))
     return out
 
 
