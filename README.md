@@ -19,7 +19,7 @@ as a second exit, at the opposite band); **no maximum hold**.
 6. An independent verifier that imports nothing from the engine must agree, and must fail on a corrupted copy.
 7. If any gate fails, stop: read nothing, fix it, rerun into a new evidence folder.
 8. No person's name anywhere in the repo — code, comments, docs, commits (write "the review of <date>", "the desk").
-9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S06, M02, D11 (+ 2 open).
+9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S06, M02, D13 (+ 2 open).
 
 **Current tests:** T02 and T03 are the same rule under two numbers (the desk's choice of 2026-11-17): T02 judged at the
 95th percentile, T03 at the 98th. On 2026-11-17 the earlier log-ratio test and the time limit on each trade were removed
@@ -29,7 +29,10 @@ V4b checks that the two make the same decisions and the same numbers. The next f
 
 **Layout**
 ```
-data/        raw files (read-only), data_review.py → DATA_REVIEW.md, APPROVED_DATA.md, check_approved_data.py
+data/        raw files (read-only), data_review.py → DATA_REVIEW.md, APPROVED_DATA.md, check_approved_data.py;
+             US ETFs (SPY + 13 broad commodity ETFs, approved 2026-11-19): fetch_us_etf.py (read-only pull from the research
+             Postgres; credentials from the environment only), data_review_us.py → DATA_REVIEW_US_ETF.md (F-RA-D12, D13),
+             read through approved_data.load_us_etf() (rules H3–H5)
 analysis/    approved_data.py (the boundary), ratio_engine.py (engine + nulls), verify_ratio.py (independent checker)
 tests/T02/   PLAN.md, T02.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
              check_page.py, T02_results.html, evidence/<run>/
@@ -60,7 +63,17 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              better when the legs' correlation is falling as z reaches its extreme? T03's rule with a chosen extreme (±1,
              ±1.5, ±2), its trades split by falling / not falling correlation (lower than 4, 13 or 26 weeks earlier) with
              within-pair shuffles, and the rule entering only on falling (or only on not-falling) correlation against 50/50;
-             controls for pair, z window, extreme, correlation period and lookback (2026-11-18)
+             controls for pair, z window, extreme, correlation period and lookback (2026-11-18); section 3: daily equity
+             curves and drawdowns of the rule's three versions against 50/50 and each asset class bought and held (N100,
+             MC100, SC100, Micro250, gold), from the rule's first day or from gold's / Micro250's first day (2026-11-19)
+             E07_good_bad/ (E07.md design; goodbad.py → out/E07_goodbad.html, E07_results.md, CSVs) — good against bad trades:
+             their paths after entry, six measures of the ratio's character before entry, early warning, exit variants
+             (z-stop, time stop) and waiting entries through the engine's book, and a walk-forward test (models trained on
+             closed trades predicting each next year, against label shuffles and random skipping) (2026-11-19)
+             E08_commodity_spy/ (E08.md design; commodity.py → out/E08_commodity.html, E08_results.md, CSVs) — 13 broad
+             commodity ETFs ÷ SPY (US ETF data, total return): the relationship (correlation, beta, the ratio's mean
+             reversion), the 'best relationship' chosen in advance on first halves, and Rule R on every ETF and z window
+             against T03's nulls (2026-11-19)
              E06_trade_search/ (E06.md design; search.py → out/E06_trades.html, E06_results.md, CSVs) — SEARCH: every
              trade of the rule on all z windows with 24 conditions at entry; condition by condition; 7,211 rules found on
              2006–2015 and checked on 2016–2026 and the gold pairs, against searches on shuffled outcomes; year by year and
