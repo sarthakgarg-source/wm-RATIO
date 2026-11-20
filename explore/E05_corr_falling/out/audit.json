@@ -1,5 +1,5 @@
 {
- "run_date": "2026-11-18",
+ "run_date": "2026-11-19",
  "status": "EXPLORATORY",
  "inputs": {
   "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
@@ -53,7 +53,9 @@
   "corr_look_ahead": [
    120,
    []
-  ]
+  ],
+  "equity_cagr_vs_section2_max_abs_diff": 2.220446049250313e-16,
+  "equity_calendar_mismatch": []
  },
  "notable": [
   405,
@@ -83,5 +85,10 @@
   "cases": 2646
  },
  "trades": 6637,
- "seconds": 129
+ "equity_curve_rows": 17871,
+ "equity_later_starts": {
+  "gold": "2015-01-12",
+  "micro": "2022-01-10"
+ },
+ "seconds": 187
 }

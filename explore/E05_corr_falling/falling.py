@@ -2,10 +2,14 @@
 E05 (EXPLORATORY): does the ratio switch do better when the legs' correlation is falling as z reaches its extreme?
 Design: explore/E05_corr_falling/E05.md (written before the first run).
 
-    python explore/E05_corr_falling/falling.py [--perms 2000]
+    python explore/E05_corr_falling/falling.py [--perms 2000] [--equity-check PATH]
 
 Every number on the page and in E05_results.md is computed here; the page's script only picks the numbers of the chosen
-controls from the embedded results and draws them. Not a finding and not a test of any rule.
+controls from the embedded results and draws them. The one exception is the curves of section 3 (equity curves, added
+2026-11-19): the page replays them from the embedded positions and prices with the engine's book formulas, and compares
+each curve's end and deepest drawdown with this script's numbers (shown in the table under the chart). --equity-check
+writes this script's full-precision curve statistics to PATH, so the page's replay can be checked on every setting.
+Not a finding and not a test of any rule.
 """
 import argparse
 import html
@@ -21,8 +25,8 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE)); OUT = os.path.join(HERE, "out")
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_ratio_cycles")); sys.path.insert(0, os.path.join(ROOT, "explore", "E03_trade_conditions"))
-from analysis.approved_data import GOLD, fingerprints, load_daily  # noqa: E402
-from analysis.ratio_engine import PAIRS, pair_frame  # noqa: E402
+from analysis.approved_data import ASSETS, GOLD, fingerprints, load_daily  # noqa: E402
+from analysis.ratio_engine import PAIRS, START, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (palette, page styling, percentile)
 import zwin as ZW  # noqa: E402  (the z windows)
 import variants as VR  # noqa: E402  (the rule through the engine's book)
@@ -35,10 +39,47 @@ SEED = 107; MIN_GROUP = 5; COST = VR.COST
 ORDER = E1.ORDER; nice = E1.nice; DEFAULT_PAIR = E1.DEFAULT_PAIR
 POOL = {p: ("gold" if GOLD in p else "index") for p in PAIRS}; INDEX_PAIRS = [p for p in PAIRS if POOL[p] == "index"]
 LO, HI = E1.LO, E1.HI
+EQ_C = COST / 2 / 1e4                 # the book's cost per side (10.4 bps), for the equity curves of section 3
+ANAME = {"N100": "N100 (large caps)", "MC100": "MC100 (mid caps)", "SC100": "SC100 (small caps)", "Micro250": "Micro250 (micro caps)", GOLD: "Gold (MCX futures)"}
 
 
 def r4(v, d=4):
     return None if v is None or v != v else round(float(v), d)
+
+
+def rle(states) -> str:
+    """The rule's state on every decision week, run-length coded: 'N40A5N30' = 40 weeks 50/50, 5 holding a, 30 at 50/50."""
+    out, prev, n = [], None, 0
+    for s in states:
+        if s == prev:
+            n += 1
+        else:
+            if prev is not None:
+                out.append(f"{prev}{n}")
+            prev, n = s, 1
+    if prev is not None:
+        out.append(f"{prev}{n}")
+    return "".join(out)
+
+
+def hold_nav(fr: pd.DataFrame, d0: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
+    """An asset bought once and held: 1.0 on the rule's first day d0 (on the asset's last day on or before d0; on its first
+    day if it starts later), bought at its next session's fill with 10.4 bps (as the engine's comparators hold_a / hold_b),
+    then valued at each of its own closes up to `end`."""
+    s = fr.loc[:end]; day0 = s.index[s.index <= d0][-1] if s.index[0] <= d0 else s.index[0]
+    sub = s.loc[day0:]; u = 1.0 / (sub["fill"].iloc[1] * (1 + EQ_C))
+    nav = pd.Series(np.nan, index=sub.index); nav.iloc[0] = 1.0; nav.iloc[1:] = u * sub["close"].iloc[1:].to_numpy()
+    return nav
+
+
+def eq_stats(nav: pd.Series, s: pd.Timestamp):
+    """The curve from day s on, at 1.0 on s (the value at s = the last one on or before s): [growth of 1, CAGR, volatility
+    (daily log returns, a year), max drawdown]; None if the curve starts after s."""
+    if nav.index[0] > s:
+        return None
+    v0 = nav.loc[:s].iloc[-1]; path = pd.concat([pd.Series([v0], index=[s]), nav[nav.index > s]]) / v0
+    days = (path.index[-1] - path.index[0]).days; r = np.log(path).diff().dropna()
+    return [float(path.iloc[-1]), float(path.iloc[-1] ** (365.25 / days) - 1), float(r.std(ddof=1) * np.sqrt(252)), float((path / path.cummax() - 1).min())]
 
 
 def falling_flags(cf: pd.DataFrame) -> dict:
@@ -98,13 +139,28 @@ def split(df: pd.DataFrame, flag: str, rng, P: int) -> dict:
 
 # ------------------------------------------------------------------------------------------------------- the run
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--perms", type=int, default=2000); P = ap.parse_args().perms
+    ap = argparse.ArgumentParser(); ap.add_argument("--perms", type=int, default=2000); ap.add_argument("--equity-check", default=None)
+    args = ap.parse_args(); P = args.perms
     t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_daily()
-    checks = {"t03_mismatch": [], "allow_all_mismatch": [], "e04_excess_max_abs_diff": None, "corr_look_ahead": [0, []]}
+    checks = {"t03_mismatch": [], "allow_all_mismatch": [], "e04_excess_max_abs_diff": None, "corr_look_ahead": [0, []], "equity_cagr_vs_section2_max_abs_diff": 0.0, "equity_calendar_mismatch": []}
     dates, Z, C, FL, TRS, FS, REL, trade_rows = {}, {}, {}, {}, {}, {}, {}, []
     split_pair, filt_rows = [], []
+    # section 3, the equity curves: the later starting points are the first days of gold and of Micro250
+    EQ_STARTS = [("gold", px[GOLD].index[0], "gold's first day"), ("micro", px["Micro250"].index[0], "Micro250's first day")]
+    EQW, EQS, EQQ, eq_rows, PIDX = {}, {}, {}, [], {}
+
+    def eqline(pair, w, starts, line, nav, extra):
+        """The curve's statistics from each starting point (full precision into eq_rows, rounded for the page)."""
+        out = []
+        for k, s, _ in starts:
+            st_ = eq_stats(nav, s); out.append(None if st_ is None else [r4(v) for v in st_])
+            if st_ is not None:
+                eq_rows.append({"pair": pair, "pool": POOL[pair], "window": w, "extreme": "", "corr_period": "", "falling_over": "", **extra, "line": line, "start": k,
+                                "first": s.date().isoformat(), "last": nav.index[-1].date().isoformat(), "growth": st_[0], "cagr": st_[1], "vol": st_[2], "maxdd": st_[3]})
+        return out
     for pair in PAIRS:
-        pf = pair_frame(px, pair, "plain"); cf = E3.corr_frame(pf); dec = cf.index
+        pf = pair_frame(px, pair, "plain"); cf = E3.corr_frame(pf); dec = cf.index; PIDX[pair] = pf.index; end = pf.index[-1]
+        EQW[pair], EQS[pair], EQQ[pair] = {}, {}, {}
         c_, b_ = E3.corr_pit_check(pf); checks["corr_look_ahead"][0] += c_; checks["corr_look_ahead"][1] += [f"{pair}: {x}" for x in b_]
         flags = falling_flags(cf); dates[pair] = [d.date().isoformat() for d in dec]
         C[pair] = {c: [None if v != v else int(round(v * 1000)) for v in cf[f"corr_{c}"].to_numpy()] for c, *_ in CWINS}
@@ -114,14 +170,26 @@ def main():
             z = VR.z_at_decisions(pf, w); assert z.index.equals(dec)
             Z[pair][w] = [None if v != v else int(round(v * 1000)) for v in z.to_numpy()]
             TRS[pair][w], FS[pair][w] = {}, {}; REL[pair][w] = {"u": {}, "f": {}}; bh = None
+            # the equity curves' starting points: the rule's first day (the first decision with a z), and the first days of
+            # gold and Micro250 where they come later; the assets bought once on the rule's first day (or their own first day)
+            d0 = z.index[z.notna().to_numpy()][0]
+            starts = [("rule", d0, "the rule's first day")] + [(k, pf.index[pf.index >= dt][0], lab) for k, dt, lab in EQ_STARTS if dt > d0]
+            EQS[pair][w], EQQ[pair][w] = {}, {}
+            EQW[pair][w] = {"s": [[k, s.date().isoformat(), lab] for k, s, lab in starts], "a": {X: eqline(pair, w, starts, X, hold_nav(px[X], d0, end), {}) for X in ASSETS}}
             for ti, (tk, thr, tlab) in enumerate(THRS):
                 unf = VR.run_states(pf, z, COST, thr, comp=bh is None); bh = unf.get("bh", bh)
+                if ti == 0:
+                    assert bh.index[0] == d0 and unf["nav"].index[0] == d0
+                    EQW[pair][w]["bh"] = eqline(pair, w, starts, "5050", bh, {})
                 if w == ZW.DEFAULT and tk == TDEFAULT:
                     checks["t03_mismatch"] += VR.check_against_t03({"pair": pair, **unf})
                 al = VR.run_states(pf, z, COST, thr, allow=np.ones(len(z), bool), comp=False)
                 if not (al["nav"].equals(unf["nav"]) and al["decisions"]["state_after"].equals(unf["decisions"]["state_after"])):
                     checks["allow_all_mismatch"].append(f"{pair} {w} {tk}")
                 su, rel_u = run_stats(unf, bh); m0, REL[pair][w]["u"][tk] = month_ends(rel_u); REL[pair][w]["m0"] = m0
+                EQS[pair][w][tk] = {"u": rle(unf["decisions"]["state_after"]), "f": {}}
+                EQQ[pair][w][tk] = {"u": eqline(pair, w, starts, "every_entry", unf["nav"], {"extreme": tk}), "f": {}}
+                checks["equity_cagr_vs_section2_max_abs_diff"] = max(checks["equity_cagr_vs_section2_max_abs_diff"], abs(eq_stats(unf["nav"], d0)[1] - su["cagr"]))
                 # the unfiltered rule's trades, with the correlation flags at entry
                 ex = unf["extras"]; trs = []
                 if len(ex):
@@ -141,17 +209,36 @@ def main():
                 # the filtered rule: an entry only when the correlation is falling (and, for contrast, only when it is not)
                 FS[pair][w][tk] = {"u": su, "f": {}}; REL[pair][w]["f"][tk] = {}
                 for ci, (c, *_) in enumerate(CWINS):
-                    FS[pair][w][tk]["f"][c] = {}; REL[pair][w]["f"][tk][c] = {}
+                    FS[pair][w][tk]["f"][c] = {}; REL[pair][w]["f"][tk][c] = {}; EQS[pair][w][tk]["f"][c] = {}; EQQ[pair][w][tk]["f"][c] = {}
                     for n in NBACKS:
                         fl = flags[(c, n)]; rf = VR.run_states(pf, z, COST, thr, allow=fl == 1, comp=False); rn = VR.run_states(pf, z, COST, thr, allow=fl == 0, comp=False)
                         sf, rel_f = run_stats(rf, bh); sn, _ = run_stats(rn, bh); _, REL[pair][w]["f"][tk][c][str(n)] = month_ends(rel_f)
                         FS[pair][w][tk]["f"][c][str(n)] = [sf, sn]
+                        EQS[pair][w][tk]["f"][c][str(n)] = [rle(rf["decisions"]["state_after"]), rle(rn["decisions"]["state_after"])]
+                        ex_ = {"extreme": tk, "corr_period": c, "falling_over": n}
+                        EQQ[pair][w][tk]["f"][c][str(n)] = [eqline(pair, w, starts, "falling", rf["nav"], ex_), eqline(pair, w, starts, "not_falling", rn["nav"], ex_)]
+                        for r_, s_ in ((rf, sf), (rn, sn)):
+                            checks["equity_cagr_vs_section2_max_abs_diff"] = max(checks["equity_cagr_vs_section2_max_abs_diff"], abs(eq_stats(r_["nav"], d0)[1] - s_["cagr"]))
                         filt_rows.append({"pair": pair, "pool": POOL[pair], "window": w, "extreme": tk, "corr_period": c, "falling_over": n, "first": su["first"], "last": su["last"], "cagr_5050": su["cagr_5050"],
                                           **{f"unfiltered_{k}": su[k] for k in ("trades", "win", "cagr", "excess", "maxdd")}, **{f"falling_{k}": sf[k] for k in ("trades", "win", "cagr", "excess", "maxdd")},
                                           **{f"not_falling_{k}": sn[k] for k in ("trades", "win", "cagr", "excess", "maxdd")}})
         print(f"  {pair:18s} {dates[pair][0]} → {dates[pair][-1]}  [{time.time() - t0:4.0f}s]", flush=True)
-    if checks["t03_mismatch"] or checks["allow_all_mismatch"] or checks["corr_look_ahead"][1] or checks["corr_look_ahead"][0] == 0:
+    # section 3: the page's calendar = every approved asset's trading days from the first pair day to the last; each pair's
+    # common calendar must come out of it exactly as pair_frame builds it, because the page derives it the same way
+    m_lo, m_hi = min(PIDX[p][0] for p in PAIRS), max(PIDX[p][-1] for p in PAIRS)
+    M = pd.DatetimeIndex(sorted(set().union(*[set(px[X].index[(px[X].index >= m_lo) & (px[X].index <= m_hi)]) for X in ASSETS])))
+    PXM = {X: px[X].reindex(M) for X in ASSETS}
+    for p in PAIRS:
+        a, b = p.split("|"); st = pd.Timestamp(START["gold"] if GOLD in p else START["index"])
+        der = M[PXM[a]["close"].notna().to_numpy() & PXM[b]["close"].notna().to_numpy() & (M >= st)]
+        if not der.equals(PIDX[p]):
+            checks["equity_calendar_mismatch"].append(p)
+    if checks["t03_mismatch"] or checks["allow_all_mismatch"] or checks["corr_look_ahead"][1] or checks["corr_look_ahead"][0] == 0 \
+            or checks["equity_calendar_mismatch"] or not checks["equity_cagr_vs_section2_max_abs_diff"] < 1e-12:
         sys.exit(f"checks FAILED: {checks}")
+    ER = pd.DataFrame(eq_rows); ER.to_csv(os.path.join(OUT, "equity_summary.csv"), index=False, float_format="%.6g")
+    if args.equity_check:
+        json.dump(eq_rows, open(args.equity_check, "w", encoding="utf-8"), default=str)
     TR = pd.DataFrame(trade_rows); TR.to_csv(os.path.join(OUT, "trades_flags.csv"), index=False)
     FR = pd.DataFrame(filt_rows); FR.to_csv(os.path.join(OUT, "filtered_summary.csv"), index=False)
     # the unfiltered rule's excess at ±1 must be E04's
@@ -161,7 +248,8 @@ def main():
     checks["e04_excess_max_abs_diff"] = float(np.nanmax(np.abs(mine.to_numpy() - theirs.to_numpy())))
     if not checks["e04_excess_max_abs_diff"] < 1e-12 or theirs.isna().any():
         sys.exit(f"the unfiltered rule's excess differs from E04's: {checks['e04_excess_max_abs_diff']}")
-    print(f"  checks: T03 equal, allow-all equal, E04 excess equal (max {checks['e04_excess_max_abs_diff']:.1e}), correlation look-ahead {checks['corr_look_ahead'][0]} checks, 0 violations  [{time.time() - t0:4.0f}s]", flush=True)
+    print(f"  checks: T03 equal, allow-all equal, E04 excess equal (max {checks['e04_excess_max_abs_diff']:.1e}), correlation look-ahead {checks['corr_look_ahead'][0]} checks, 0 violations; "
+          f"equity CAGR = section 2's (max {checks['equity_cagr_vs_section2_max_abs_diff']:.1e}), pair calendars rebuilt exactly  [{time.time() - t0:4.0f}s]", flush=True)
 
     # ---------------------------------------------------------------- section 1: the split, pooled and per pair
     closed = TR[~TR["open"]]; PS, SP, srows = {}, {}, []
@@ -203,7 +291,7 @@ def main():
              "checks": checks, "notable": [n_not, len(allp)], "filtered_settings_falling_beats_unfiltered_in_4_of_6": int(sum(v >= 4 for v in fh_all)), "filtered_settings": len(fh_all),
              "filtered_settings_not_falling_beats_unfiltered_in_4_of_6": int(sum(v >= 4 for v in fh_nf)), "filtered_settings_falling_beats_not_falling_in_4_of_6": int(sum(v >= 4 for v in fh_h2h)),
              "filtered_settings_not_falling_beats_falling_in_4_of_6": int(sum(v <= 2 for v in fh_h2h)), "direction_mean_extra": dirc, "index_cases_ahead_of_5050": beat,
-             "trades": int(len(TR)), "seconds": round(time.time() - t0)}
+             "trades": int(len(TR)), "equity_curve_rows": int(len(ER)), "equity_later_starts": {k: s.date().isoformat() for k, s, _ in EQ_STARTS}, "seconds": round(time.time() - t0)}
     json.dump(audit, open(os.path.join(OUT, "audit.json"), "w", encoding="utf-8"), indent=1, default=str)
 
     # ---------------------------------------------------------------- results (markdown)
@@ -242,6 +330,20 @@ def main():
            "| correlation | " + " | ".join(f"falling over {n} wk" for n in NBACKS) + " |", "|---|" + "---|" * len(NBACKS)]
     for c, *_ in CWINS:
         md.append(f"| {cl_[c]} | " + " | ".join((lambda r: f"{r[4]} of {r[1]} ({r[5] * 100:+.1f} pp) · {r[0]} · {r[3]}")(FH[ZW.DEFAULT][TDEFAULT][c][str(n)]) for n in NBACKS) + " |")
+    # section 6: the equity curves at the default setting, from the rule's first day and from gold's first day
+    lines_ = [("every_entry", "every entry"), ("falling", "falling only"), ("not_falling", "not falling only"), ("5050", "50/50 bought once")] + [(X, ANAME[X]) for X in ASSETS]
+    md += [f"\n## 6. Equity curves at the default setting (added 2026-11-19): CAGR (max drawdown) of the rule's three versions, of 50/50 bought once and of each asset bought once and held\n",
+           f"_Value of 1 from the start day to the pair's last day; the rule's versions after costs; price indices (no dividends); gold = MCX front-month futures. Every curve, setting and start is in `out/equity_summary.csv`._\n"]
+    dsel = ER[(ER["window"] == ZW.DEFAULT) & ((ER["extreme"] == "") | (ER["extreme"] == TDEFAULT)) & ((ER["corr_period"] == "") | (ER["corr_period"] == CDEFAULT))
+              & ((ER["falling_over"] == "") | (ER["falling_over"] == NDEFAULT))]
+    for sk, stitle in (("rule", "from the rule's first day"), ("gold", f"from gold's first day ({EQ_STARTS[0][1].date().isoformat()}; index pairs that start earlier)")):
+        md += [f"\n**{stitle}**\n", "| pair | dates | " + " | ".join(lab for _, lab in lines_) + " |", "|---|---|" + "---|" * len(lines_)]
+        for p in ORDER:
+            g = dsel[(dsel["pair"] == p) & (dsel["start"] == sk)]
+            if not len(g):
+                continue
+            cell = {r["line"]: f"{r['cagr'] * 100:.1f}% ({r['maxdd'] * 100:.0f}%)" for _, r in g.iterrows()}
+            md.append(f"| {nice(p)} | {g['first'].iloc[0]} → {g['last'].iloc[0]} | " + " | ".join(cell.get(k, "—") for k, _ in lines_) + " |")
     open(os.path.join(OUT, "E05_results.md"), "w", encoding="utf-8").write("\n".join(md) + "\n")
 
     # ---------------------------------------------------------------- the page: the results embedded, drawn by the page's script
@@ -266,6 +368,13 @@ def main():
                   "cwins": [[c, lab, f] for c, lab, f, _ in CWINS], "nbacks": list(NBACKS), "defaults": audit["defaults"], "lo": LO, "hi": HI, "minGroup": MIN_GROUP,
                   "dates": dates, "z": Z, "corr": C, "flags": FL, "trades": TRS, "fs": FSJ, "rel": REL, "ps": PSJ, "sp": SP, "fh": FH,
                   "pal": {"blue": E1.BLUE, "orange": E1.ORANGE, "aqua": E1.AQUA, "muted": E1.MUTED, "divLight": E1.DIV_LIGHT, "divDark": E1.DIV_DARK}})
+    # section 3's data, not rounded: the prices exactly as the engine reads them (the page replays the book on them), the
+    # rule's positions run-length coded, and this script's statistics of every curve (rounded, for the table)
+    def arr(s):
+        return [None if v != v else float(v) for v in s.to_numpy()]
+    DATA["eq"] = {"c": EQ_C, "m": [d.date().isoformat() for d in M], "px": {X: {"c": arr(PXM[X]["close"]), "f": arr(PXM[X]["fill"])} for X in ASSETS},
+                  "start": {p: (START["gold"] if GOLD in p else START["index"]) for p in PAIRS}, "end": {p: PIDX[p][-1].date().isoformat() for p in PAIRS},
+                  "assets": ASSETS, "aname": ANAME, "w": EQW, "st": EQS, "q": EQQ}
     blob = json.dumps(DATA, separators=(",", ":"), ensure_ascii=False).replace("</", "<\\/")
     def sel(i, lab, opts, default):
         return f"<label>{lab} <select id='{i}'>" + "".join(f"<option value='{html.escape(str(v), quote=True)}'{' selected' if str(v) == str(default) else ''}>{html.escape(t)}</option>" for v, t in opts) + "</select></label>"
@@ -296,10 +405,22 @@ def main():
          "<div class='card'><div id='g_rel' class='plot'></div><div id='t_rel'></div></div>",
          "<div class='card'><div id='g_heatf' class='plot'></div></div>",
          "<div class='card'><p class='note' style='margin:4px 0'>Every pair at the chosen setting:</p><div id='t_all'></div></div>",
+         "<h2>3 · Equity curves: the rule against the asset classes</h2><p class='note'>The value of 1 invested on the start day, for the rule's three versions at the setting chosen at the top (after costs, as in section 2), "
+         "for 50/50 bought once (the rule's benchmark), and for each index and gold bought once (10.4 bps) and held. The asset classes are the ones in the approved data: Indian equity by size "
+         "(N100 large caps, MC100 mid caps, SC100 small caps, Micro250 micro caps) and gold; there is no cash or bond series. The indices are price indices (dividends not included), which "
+         "understates every equity line against gold; gold is MCX front-month futures, rolled (F-RA-D-OPEN-2: an unconfirmed roll on 2026-01-30). Gold starts on "
+         f"{EQ_STARTS[0][1].date().isoformat()} and Micro250 on {EQ_STARTS[1][1].date().isoformat()}: choose a later start to include them. A later start measures the same portfolios from that day.</p>",
+         "<div class='card'><div class='eqctl'><label>Start <select id='eq_start'></select></label><label>Scale <select id='eq_scale'><option value='log' selected>log</option><option value='linear'>linear</option></select></label>"
+         "<span class='note' style='margin:0'>Show:</span><label><input type='checkbox' id='eq_bh' checked> 50/50 bought once</label>"
+         + "".join(f"<label><input type='checkbox' id='eq_a_{X}' checked> {html.escape(ANAME[X])}</label>" for X in ASSETS) + "</div>"
+         "<div id='g_eq' class='plot'></div><div id='g_dd' class='plot'></div><p id='eq_check' class='note' style='margin:4px 0'></p><div id='t_eq'></div></div>",
          "<h2>Method and limits</h2><div class='card'><ul>"
          "<li><b>Rule and book.</b> explore/E01_ratio_cycles/variants.py runs the state machine on z and passes the targets to analysis/ratio_engine.book (fills next session at OHLC4, 10.4 bps per side, units held, daily NAV). Decisions are weekly; daily z windows are read at each week's last trading day.</li>"
          "<li><b>Correlation.</b> E03's series: trailing Pearson correlation of weekly log returns on decision weeks (13/26/52 weeks) or of daily log returns (20/60/120/250 days, read at the decision day); the full window is required. Falling compares the value on the signal week with the value N decision weeks earlier; missing either = unknown.</li>"
          f"<li><b>Chance check.</b> Within each pair the falling/not-falling labels are shuffled among that pair's closed trades {P:,} times, seed default_rng([{SEED}, z_window_id, extreme_id, corr_period_id, falling_over_id, pool_id]); a group with fewer than {MIN_GROUP} trades gets no percentile. It asks only whether the label goes with better trades. The filtered rule has no null here; whether it beats random timing is a new pre-registered test.</li>"
+         "<li><b>Equity curves (section 3, added 2026-11-19).</b> The page replays each curve from the embedded prices (the engine's fills and closes, unrounded) and the rule's weekly positions with the engine's book formulas, "
+         "and checks its end and its deepest drawdown against the script's numbers in the table (a mismatch is shown in red under the chart). Assets are valued on their own trading days; the rule and 50/50 on the pair's common days. "
+         "Growth of 1, CAGR over calendar days, volatility of daily log returns × √252, max drawdown from the running peak; every curve, setting and start in out/equity_summary.csv.</li>"
          f"<li><b>Limits.</b> {len(fh_all)} settings per pair and two pools: about one percentile in ten is notable by chance, and neighbouring settings share most of their trades. Few trades per pair (fewer still at ±2). Gold pairs from 2015 with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); Micro250 pairs from 2022. Design written before the first run: explore/E05_corr_falling/E05.md.</li></ul></div>",
          "</main>", f"<script id='e05-data' type='application/json'>{blob}</script>", plotly_js, "<script>" + PAGE_JS + "</script></body></html>"]
     out = os.path.join(OUT, "E05_falling.html"); open(out, "w", encoding="utf-8").write("\n".join(H))
@@ -308,6 +429,10 @@ def main():
 
 CSS_EXTRA = """
 .plot{width:100%;min-height:120px}
+.eqctl{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin:4px 0 10px;font-size:13px}
+.eqctl label{white-space:nowrap}
+.eqctl input[type=checkbox]{vertical-align:middle;margin:0 3px 0 0}
+.bad{color:#d03b3b;font-weight:600}
 .legend-dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:middle}
 td.n{font-weight:600}
 """
@@ -448,14 +573,120 @@ function drawRel(s){
   const rows=D.pairs.map(p=>{const g=D.fs[p][s.w][s.t], q=g.f[s.c][String(s.n)];return [D.nice[p]+(D.pool[p]==='gold'?' (gold)':''), g.win[0]+' → '+g.win[1], (g.u[5]*100).toFixed(1)+'%', fpp(g.u[6])+' ('+g.u[0]+')', fpp(q[0][6])+' ('+q[0][0]+')', fpp(q[1][6])+' ('+q[1][0]+')'];});
   document.getElementById('t_all').innerHTML=table(['pair','window','50/50 CAGR','excess: every entry (trades)','falling only (trades)','not falling only (trades)'],rows);
 }
+// ---- section 3: equity curves. Replayed here from the embedded prices and the rule's weekly positions with the engine's
+// book formulas (analysis/ratio_engine.book); each curve's end and deepest drawdown are checked against the script's table.
+const EQ = D.eq, MIDX = new Map(EQ.m.map((d,i)=>[d,i])), PCAL = {};
+const EQCOL = {light:{u:'#52514e',f:'#2a78d6',nf:'#eb6834',bh:'#898781',N100:'#1baf7a',GoldMCX:'#eda100',MC100:'#e87ba4',SC100:'#008300',Micro250:'#6250d6'},
+               dark:{u:'#c3c2b7',f:'#3987e5',nf:'#d95926',bh:'#898781',N100:'#199e70',GoldMCX:'#c98500',MC100:'#d55181',SC100:'#008300',Micro250:'#9085e9'}};
+const EQORDER = ['N100','GoldMCX','MC100','SC100','Micro250'];   // the palette's validated slot order (aqua, yellow, magenta, green, violet)
+const LOGT = [0.2,0.3,0.4,0.5,0.6,0.7,0.8,1,1.5,2,3,4,5,7,10,15,20,30,50,70,100];   // log-scale ticks, labelled in full
+function pairCal(p){
+  if(PCAL[p])return PCAL[p];
+  const ab=p.split('|'), A=EQ.px[ab[0]], B=EQ.px[ab[1]], st=EQ.start[p], idx=[];
+  for(let i=0;i<EQ.m.length;i++){if(A.c[i]!==null&&B.c[i]!==null&&EQ.m[i]>=st)idx.push(i);}
+  return PCAL[p]={t:idx.map(i=>EQ.m[i]),pos:new Map(idx.map((i,k)=>[EQ.m[i],k])),ca:idx.map(i=>A.c[i]),cb:idx.map(i=>B.c[i]),fa:idx.map(i=>A.f[i]),fb:idx.map(i=>B.f[i])};
+}
+function unrle(code){const out=[];code.replace(/([NAB])(\d+)/g,(m,x,n)=>{for(let k=0;k<Number(n);k++)out.push(x);return '';});return out;}
+function replay(p,w,code){   // the engine's book: 50/50 by value the session after the first decision, switches the session after each decision, 10.4 bps a side
+  const P=pairCal(p), dec=D.dates[p], z=D.z[p][w], tg=unrle(code), c=EQ.c, n=P.t.length, bi=[];
+  for(let i=0;i<dec.length;i++)if(z[i]!==null)bi.push(i);
+  const k0=P.pos.get(dec[bi[0]]), kt=k0+1;
+  let ua=0.5/(P.fa[kt]*(1+c)), ub=0.5/(P.fb[kt]*(1+c)), held='N', seg=kt;
+  const UA=new Float64Array(n), UB=new Float64Array(n);
+  for(let j=1;j<bi.length;j++){
+    const tgt=tg[bi[j]]; if(tgt===held)continue;
+    const k2=P.pos.get(dec[bi[j]])+1; if(k2>=n)break;
+    for(let k=seg;k<k2;k++){UA[k]=ua;UB[k]=ub;}
+    const pa=P.fa[k2], pb=P.fb[k2], va=ua*pa, vb=ub*pb; let na, nb;
+    if(tgt==='A'){const pr=vb*(1-c); na=ua+pr/(pa*(1+c)); nb=0;}
+    else if(tgt==='B'){const pr=va*(1-c); nb=ub+pr/(pb*(1+c)); na=0;}
+    else if(va>=vb){const x=(va-vb)/(1+(1-c)/(1+c)), pr=x*(1-c); na=ua-x/pa; nb=ub+pr/(pb*(1+c));}
+    else{const x=(vb-va)/(1+(1-c)/(1+c)), pr=x*(1-c); nb=ub-x/pb; na=ua+pr/(pa*(1+c));}
+    ua=na; ub=nb; held=tgt; seg=k2;
+  }
+  for(let k=seg;k<n;k++){UA[k]=ua;UB[k]=ub;}
+  const t=[P.t[k0]], val=[1];
+  for(let k=kt;k<n;k++){t.push(P.t[k]);val.push(UA[k]*P.ca[k]+UB[k]*P.cb[k]);}
+  return {t:t,v:val};
+}
+function holdNav(X,d0,end){   // bought once: 1 on the rule's first day (or the asset's own first day), bought at its next session's fill with 10.4 bps
+  const A=EQ.px[X], id0=MIDX.get(d0), ie=MIDX.get(end); let first=-1;
+  for(let i=0;i<=ie;i++){if(A.c[i]!==null){first=i;break;}}
+  if(first<0)return null;
+  let i0=first; if(first<=id0){for(let i=id0;i>=0;i--){if(A.c[i]!==null){i0=i;break;}}}
+  let j1=-1; for(let i=i0+1;i<=ie;i++){if(A.c[i]!==null){j1=i;break;}}
+  if(j1<0)return null;
+  const u=1/(A.f[j1]*(1+EQ.c)), t=[EQ.m[i0]], val=[1];
+  for(let i=j1;i<=ie;i++){if(A.c[i]!==null){t.push(EQ.m[i]);val.push(u*A.c[i]);}}
+  return {t:t,v:val};
+}
+function rebase(cv,s){   // 1 on day s; the value at s = the last one on or before s
+  if(!cv)return null; let k=-1;
+  for(let i=0;i<cv.t.length;i++){if(cv.t[i]<=s)k=i;else break;}
+  if(k<0)return null;
+  const v0=cv.v[k], t=[s], val=[1];
+  for(let i=k+1;i<cv.t.length;i++){t.push(cv.t[i]);val.push(cv.v[i]/v0);}
+  return {t:t,v:val};
+}
+function drawdown(v){let pk=-Infinity;return v.map(x=>{pk=Math.max(pk,x);return x/pk-1;});}
+function eqState(){
+  const o={start:v('eq_start')||'rule', scale:v('eq_scale'), bh:document.getElementById('eq_bh').checked, a:{}};
+  EQ.assets.forEach(X=>{o.a[X]=document.getElementById('eq_a_'+X).checked;}); return o;
+}
+function eqCurves(s){   // every line's curve from the rule's first day, with the script's statistics per start
+  const W=EQ.w[s.p][s.w], d0=W.s[0][1], end=EQ.end[s.p], st=EQ.st[s.p][s.w][s.t], q=EQ.q[s.p][s.w][s.t], codes=st.f[s.c][String(s.n)], qs=q.f[s.c][String(s.n)];
+  const N='N'+D.dates[s.p].length, L=[];
+  L.push({key:'u',name:'the rule, every entry',cv:replay(s.p,s.w,st.u),q:q.u,width:2.4});
+  L.push({key:'f',name:'entries only on falling correlation',cv:replay(s.p,s.w,codes[0]),q:qs[0],width:2.4});
+  L.push({key:'nf',name:'entries only when not falling',cv:replay(s.p,s.w,codes[1]),q:qs[1],width:2.4});
+  L.push({key:'bh',name:'50/50 bought once',cv:replay(s.p,s.w,N),q:W.bh,width:1.6,dash:'dash',opt:'bh'});
+  EQORDER.forEach(X=>L.push({key:X,name:EQ.aname[X],cv:holdNav(X,d0,end),q:W.a[X],width:1.4,opt:X,leg:s.p.split('|').includes(X)}));
+  return {W:W,end:end,L:L};
+}
+function drawEquity(s){
+  const c=th(), col=isDark()?EQCOL.dark:EQCOL.light, sel=document.getElementById('eq_start');
+  const W=EQ.w[s.p][s.w], prev=sel.value||(function(){try{return (JSON.parse(localStorage.getItem('e05-eq')||'{}')).start;}catch(e){return null;}})()||'rule';
+  sel.innerHTML=W.s.map(x=>"<option value='"+x[0]+"'>"+(x[0]==='rule'?'the rule\'s first day, '+x[1]:x[1]+' ('+x[2]+')')+'</option>').join('');
+  sel.value=W.s.some(x=>x[0]===prev)?prev:'rule';
+  const o=eqState(); try{localStorage.setItem('e05-eq',JSON.stringify(o));}catch(e){}
+  const si=W.s.findIndex(x=>x[0]===o.start), sd=W.s[si][1], E=eqCurves(s);
+  const tr=[], ddt=[], rows=[], bad=[], gone=[];
+  E.L.forEach(l=>{
+    const shown=!l.opt||(l.opt==='bh'?o.bh:o.a[l.opt]), qq=l.q[si], cv=rebase(l.cv,sd);
+    if(!cv||!qq){gone.push(l.name+', which starts on '+(l.cv?l.cv.t[0]:'—'));return;}
+    const dd=drawdown(cv.v), mdd=Math.min.apply(null,dd), g=cv.v[cv.v.length-1];
+    if(Math.abs(g-qq[0])>6e-5*Math.max(1,Math.abs(qq[0]))||Math.abs(mdd-qq[3])>6e-5)bad.push(l.name);
+    if(shown){
+      const line={color:col[l.key],width:l.width}; if(l.dash)line.dash=l.dash;
+      tr.push({x:cv.t,y:cv.v,type:'scatter',mode:'lines',name:l.name,line:line,hovertemplate:esc(l.name)+': %{y:.3f}<extra></extra>'});
+      ddt.push({x:cv.t,y:dd.map(x=>x*100),type:'scatter',mode:'lines',name:l.name,line:line,showlegend:false,hovertemplate:esc(l.name)+': %{y:.1f}%<extra></extra>'});
+    }
+    rows.push([(shown?'':'<span style=\'opacity:.6\'>')+"<span class='legend-dot' style='background:"+col[l.key]+";margin-left:0'></span>"+esc(l.name)+(l.leg?' · in the pair':'')+(shown?'':' (hidden)</span>'),
+      sd+' → '+cv.t[cv.t.length-1], qq[0].toFixed(2), fp(qq[1]), (qq[2]*100).toFixed(1)+'%', (qq[3]*100).toFixed(0)+'%']);
+  });
+  const setting='z window '+lab(D.windows,s.w)+', extreme '+tlab(s.t)+'; filter: correlation '+lab(D.cwins,s.c)+' falling over '+s.n+' weeks';
+  const sub='after costs; each index and gold bought once and held; price indices (no dividends); gold = MCX front-month futures; '+(o.scale==='log'?'log scale':'linear scale');
+  Plotly.react('g_eq',tr,layout(two(D.nice[s.p]+' · value of 1 invested · '+sd+' → '+E.end+' · '+setting,sub),560,
+    {hovermode:'x unified',xaxis:ax({type:'date'}),margin:{l:60,r:24,t:100,b:40},legend:{orientation:'h',x:0,y:1.02,yanchor:'bottom',font:{color:c.ink2,size:11}},
+     yaxis:ax(Object.assign({type:o.scale,title:{text:'value of 1',font:{color:c.ink2}}},o.scale==='log'?{tickvals:LOGT,ticktext:LOGT.map(String)}:{})),
+     shapes:[{type:'line',xref:'paper',x0:0,x1:1,yref:'y',y0:1,y1:1,line:{color:c.axis,width:1}}]}),CFG);
+  Plotly.react('g_dd',ddt,layout(two(D.nice[s.p]+' · drawdown from the running peak · '+sd+' → '+E.end,'the same lines as above'),320,
+    {hovermode:'x unified',xaxis:ax({type:'date'}),yaxis:ax({ticksuffix:'%',title:{text:'drawdown',font:{color:c.ink2}}}),margin:{l:60,r:24,t:66,b:40}}),CFG);
+  document.getElementById('eq_check').innerHTML=(bad.length?"<span class='bad'>The page's replay does not match the script's numbers for: "+bad.map(esc).join(', ')+'.</span> ':'')+
+    (gone.length?'Not shown from '+sd+': '+gone.map(esc).join('; ')+' — choose a later start to include it. ':'');
+  document.getElementById('t_eq').innerHTML=table(['line','dates','growth of 1','CAGR','volatility (a year)','max drawdown'],rows)+"<p class='note'>"+D.nice[s.p]+', '+setting+'. The numbers are the script\'s (out/equity_summary.csv); the curves are replayed in the page and checked against them.</p>';
+}
 function render(){
   const s=S();
   try{localStorage.setItem('e05-state',JSON.stringify(s));}catch(e){}
-  drawSummary(s); drawPool(s); drawHeats(s); drawPair(s); drawRel(s);
+  drawSummary(s); drawPool(s); drawHeats(s); drawPair(s); drawRel(s); drawEquity(s);
   document.getElementById('theme').textContent=isDark()?'Light':'Dark';
 }
 window.addEventListener('load',()=>{
   try{const st=JSON.parse(localStorage.getItem('e05-state')||'null');if(st){[['pair','p'],['zwin','w'],['zthr','t'],['cwin','c'],['nback','n']].forEach(([id,k])=>{const el=document.getElementById(id);if(st[k]!==undefined&&Array.from(el.options).some(o=>o.value===String(st[k])))el.value=String(st[k]);});}}catch(e){}
+  try{const eo=JSON.parse(localStorage.getItem('e05-eq')||'null');if(eo){if(eo.scale)document.getElementById('eq_scale').value=eo.scale;if(eo.bh!==undefined)document.getElementById('eq_bh').checked=!!eo.bh;
+    EQ.assets.forEach(X=>{if(eo.a&&eo.a[X]!==undefined)document.getElementById('eq_a_'+X).checked=!!eo.a[X];});}}catch(e){}
+  ['eq_start','eq_scale','eq_bh'].concat(EQ.assets.map(X=>'eq_a_'+X)).forEach(id=>document.getElementById(id).addEventListener('change',()=>drawEquity(S())));
   ['pair','zwin','zthr','cwin','nback'].forEach(id=>document.getElementById(id).addEventListener('change',render));
   document.getElementById('theme').addEventListener('click',()=>{document.documentElement.dataset.theme=isDark()?'light':'dark';render();});
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
