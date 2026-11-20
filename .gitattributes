@@ -1,0 +1,2 @@
+# Approved data files are fingerprinted (sha256 on data/APPROVED_DATA.md): store them byte for byte, no line-ending conversion
+data/*.csv -text
