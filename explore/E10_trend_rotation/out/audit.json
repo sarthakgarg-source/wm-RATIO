@@ -1,0 +1,223 @@
+{
+ "run_date": "2026-11-23",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227",
+  "us_etf_ohlcv.csv": "84729a36edc18c343c4d1768cec41c577d0ff5850265e2f3aabdb1e841904e85",
+  "us_etf_dividends.csv": "04392d6ff812359e1f2acbf89efd038dc81565315f340bc471cdc9615d0251e1",
+  "us_gold_ohlcv.csv": "75fa5f1bc47c0df7bf0f95b21c2d744d85c72fb7f039990d0dca1517fa4d3b92",
+  "us_small_ohlcv.csv": "726cb635d29845fe1645db33ae1c2ef3b85bd47332d2e9f55e1bdba0fb02a09d",
+  "us_small_dividends.csv": "332d0ae744bc2c815757ad742e1018efa4067015fe96c580ec64ef39ecbc3db3"
+ },
+ "draws_per_null": 500,
+ "seed": "default_rng([market_id (0 US, 1 India), pair_id, rule_id, draw]); rule_id 0 Rule R (N-A), 1-3 momentum 12-1/12/6, 4 supertrend (N-S)",
+ "cost_bps_round_trip": 20.8,
+ "common_start_decision_week": 53,
+ "checks": {
+  "close_max_abs_diff": 0.0,
+  "engine_book_max_abs_diff": 0.0,
+  "engine_book_runs": 72,
+  "benchmarks_vs_engine_max_abs_diff": 0.0,
+  "weekly_bar_index_mismatch": [],
+  "t03_mismatch": [],
+  "cut_checks": 144,
+  "cut_violations": [],
+  "null_draws": 45000,
+  "null_count_mismatch": 0,
+  "st_null_combo_weeks_changed": 8903,
+  "band_vs_z_mismatch": 0,
+  "engine_vs_z_state_mismatch": 0,
+  "st_missing_after_start": 0
+ },
+ "summary": {
+  "us|R52": {
+   "n": 12,
+   "ahead_5050": 5,
+   "ahead_both": 3,
+   "median_excess": -0.008314,
+   "shallower_dd_5050": 3,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 0,
+   "dd_pct_low": 0
+  },
+  "us|m12_1": {
+   "n": 12,
+   "ahead_5050": 7,
+   "ahead_both": 4,
+   "median_excess": 0.009696,
+   "shallower_dd_5050": 1,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 0,
+   "dd_pct_low": 0
+  },
+  "us|m12": {
+   "n": 12,
+   "ahead_5050": 8,
+   "ahead_both": 6,
+   "median_excess": 0.025169,
+   "shallower_dd_5050": 1,
+   "pct_high": 0,
+   "pct_low": 1,
+   "dd_pct_high": 0,
+   "dd_pct_low": 1
+  },
+  "us|m6": {
+   "n": 12,
+   "ahead_5050": 5,
+   "ahead_both": 2,
+   "median_excess": -0.005538,
+   "shallower_dd_5050": 1,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 0,
+   "dd_pct_low": 2
+  },
+  "us|S1": {
+   "n": 12,
+   "ahead_5050": 0,
+   "ahead_both": 0,
+   "median_excess": -0.043764,
+   "shallower_dd_5050": 8,
+   "pct_high": 0,
+   "pct_low": 3,
+   "dd_pct_high": 0,
+   "dd_pct_low": 1
+  },
+  "us|S2": {
+   "n": 12,
+   "ahead_5050": 1,
+   "ahead_both": 1,
+   "median_excess": -0.009745,
+   "shallower_dd_5050": 7,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 0,
+   "dd_pct_low": 0
+  },
+  "us|S3": {
+   "n": 12,
+   "ahead_5050": 3,
+   "ahead_both": 0,
+   "median_excess": -0.003817,
+   "shallower_dd_5050": 7,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 0,
+   "dd_pct_low": 0
+  },
+  "us|S4": {
+   "n": 12,
+   "ahead_5050": 0,
+   "ahead_both": 0,
+   "median_excess": -0.053899,
+   "shallower_dd_5050": 11,
+   "pct_high": 0,
+   "pct_low": 2,
+   "dd_pct_high": 1,
+   "dd_pct_low": 1
+  },
+  "india|R52": {
+   "n": 6,
+   "ahead_5050": 0,
+   "ahead_both": 0,
+   "median_excess": -0.032801,
+   "shallower_dd_5050": 1,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 0,
+   "dd_pct_low": 0
+  },
+  "india|m12_1": {
+   "n": 6,
+   "ahead_5050": 5,
+   "ahead_both": 2,
+   "median_excess": 0.006576,
+   "shallower_dd_5050": 2,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 1,
+   "dd_pct_low": 0
+  },
+  "india|m12": {
+   "n": 6,
+   "ahead_5050": 5,
+   "ahead_both": 3,
+   "median_excess": 0.014088,
+   "shallower_dd_5050": 1,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 0,
+   "dd_pct_low": 0
+  },
+  "india|m6": {
+   "n": 6,
+   "ahead_5050": 4,
+   "ahead_both": 3,
+   "median_excess": 0.009231,
+   "shallower_dd_5050": 3,
+   "pct_high": 0,
+   "pct_low": 0,
+   "dd_pct_high": 0,
+   "dd_pct_low": 0
+  },
+  "india|S1": {
+   "n": 6,
+   "ahead_5050": 3,
+   "ahead_both": 1,
+   "median_excess": -0.008667,
+   "shallower_dd_5050": 4,
+   "pct_high": 1,
+   "pct_low": 0,
+   "dd_pct_high": 2,
+   "dd_pct_low": 0
+  },
+  "india|S2": {
+   "n": 6,
+   "ahead_5050": 3,
+   "ahead_both": 3,
+   "median_excess": 0.017148,
+   "shallower_dd_5050": 3,
+   "pct_high": 1,
+   "pct_low": 0,
+   "dd_pct_high": 1,
+   "dd_pct_low": 0
+  },
+  "india|S3": {
+   "n": 6,
+   "ahead_5050": 4,
+   "ahead_both": 2,
+   "median_excess": 0.010148,
+   "shallower_dd_5050": 3,
+   "pct_high": 1,
+   "pct_low": 0,
+   "dd_pct_high": 1,
+   "dd_pct_low": 0
+  },
+  "india|S4": {
+   "n": 6,
+   "ahead_5050": 0,
+   "ahead_both": 0,
+   "median_excess": -0.021631,
+   "shallower_dd_5050": 6,
+   "pct_high": 1,
+   "pct_low": 0,
+   "dd_pct_high": 2,
+   "dd_pct_low": 0
+  }
+ },
+ "supertrend": {
+  "rule": "the desk's Weekly LW: W-FRI bars on each leg's own sessions, true range, ATR = linear-weighted mean of the last 5 (1/15..5/15), bands (H+L)/2 \u00b1 2 ATR ratcheted, flips on a close through the band; a bar is usable once its week has ended on the leg's calendar; US legs closes only",
+  "atr": 5,
+  "mult": 2.0,
+  "check": "the first run's Wilder (10, 3) on the pair's common-calendar bars"
+ },
+ "touch_seen_daily_median": 0.992857,
+ "touch_seen_earlier_median": 0.790995,
+ "touch_closed_beyond_median": 0.658903,
+ "touch_w52_d250_matched_median": 0.980769,
+ "touch_same_state_median": 0.987041,
+ "seconds": 70
+}
