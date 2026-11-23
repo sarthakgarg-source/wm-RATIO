@@ -1,0 +1,80 @@
+{
+ "run_date": "2026-11-20",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227",
+  "us_etf_ohlcv.csv": "84729a36edc18c343c4d1768cec41c577d0ff5850265e2f3aabdb1e841904e85",
+  "us_etf_dividends.csv": "04392d6ff812359e1f2acbf89efd038dc81565315f340bc471cdc9615d0251e1",
+  "us_gold_ohlcv.csv": "75fa5f1bc47c0df7bf0f95b21c2d744d85c72fb7f039990d0dca1517fa4d3b92"
+ },
+ "draws_per_null": 1000,
+ "seed": "default_rng([universe_id, pair_id (+100 for N-B), draw, window_id])",
+ "checks": {
+  "t03_mismatch": [],
+  "replay_mismatch": [],
+  "e06_unmatched": 0,
+  "e06_max_abs_diff": 9.974659986866641e-17,
+  "e08_unmatched": 0,
+  "e08_max_abs_diff": 9.996344030316351e-17,
+  "null_draws": 328000,
+  "null_count_mismatch": 0
+ },
+ "trades": 5961,
+ "closed": 5838,
+ "pooled_w52": {
+  "index": {
+   "pairs": 6,
+   "pos_comp": 0,
+   "median_per_year": -0.016169,
+   "trades": 101,
+   "won": 0.663366,
+   "mean": -0.02308,
+   "median": 0.020824,
+   "na_hi": 0,
+   "na_lo": 0,
+   "nb_hi": 0,
+   "nb_lo": 0
+  },
+  "gold": {
+   "pairs": 4,
+   "pos_comp": 1,
+   "median_per_year": -0.101185,
+   "trades": 43,
+   "won": 0.604651,
+   "mean": -0.098741,
+   "median": 0.037878,
+   "na_hi": 0,
+   "na_lo": 0,
+   "nb_hi": 0,
+   "nb_lo": 0
+  },
+  "us": {
+   "pairs": 9,
+   "pos_comp": 4,
+   "median_per_year": -0.007058,
+   "trades": 127,
+   "won": 0.677165,
+   "mean": -0.011665,
+   "median": 0.045845,
+   "na_hi": 0,
+   "na_lo": 0,
+   "nb_hi": 0,
+   "nb_lo": 0
+  },
+  "usgold": {
+   "pairs": 1,
+   "pos_comp": 1,
+   "median_per_year": 0.001222,
+   "trades": 25,
+   "won": 0.72,
+   "mean": -0.002703,
+   "median": 0.057819,
+   "na_hi": 0,
+   "na_lo": 0,
+   "nb_hi": 0,
+   "nb_lo": 0
+  }
+ },
+ "seconds": 92
+}
