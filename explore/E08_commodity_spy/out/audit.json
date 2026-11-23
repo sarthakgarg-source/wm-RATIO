@@ -1,11 +1,12 @@
 {
- "run_date": "2026-11-19",
+ "run_date": "2026-11-20",
  "status": "EXPLORATORY",
  "inputs": {
   "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
   "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227",
   "us_etf_ohlcv.csv": "84729a36edc18c343c4d1768cec41c577d0ff5850265e2f3aabdb1e841904e85",
-  "us_etf_dividends.csv": "04392d6ff812359e1f2acbf89efd038dc81565315f340bc471cdc9615d0251e1"
+  "us_etf_dividends.csv": "04392d6ff812359e1f2acbf89efd038dc81565315f340bc471cdc9615d0251e1",
+  "us_gold_ohlcv.csv": "75fa5f1bc47c0df7bf0f95b21c2d744d85c72fb7f039990d0dca1517fa4d3b92"
  },
  "draws_per_null": 500,
  "seed": "default_rng([pair_id (+100 for N-B), 0, draw, window_id])",
@@ -14,9 +15,9 @@
  "checks": {
   "close_max_abs_diff": 0.0,
   "calendar_mismatch": [],
-  "cut_checks": 96,
+  "cut_checks": 104,
   "cut_violations": [],
-  "null_draws": 87000,
+  "null_draws": 94000,
   "null_count_mismatch": 0
  },
  "chosen_by_first_half_score": [
@@ -41,5 +42,12 @@
  "main_na_notable_low": 0,
  "main_nb_notable_high": 1,
  "main_nb_notable_low": 0,
- "seconds": 262
+ "gold_windows": 7,
+ "gold_ahead_of_5050": 0,
+ "gold_na_notable_high": 0,
+ "gold_na_notable_low": 0,
+ "gold_nb_notable_high": 0,
+ "gold_nb_notable_low": 0,
+ "gold_median_excess": -0.014253088725148189,
+ "seconds": 314
 }

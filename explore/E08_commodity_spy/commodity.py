@@ -21,16 +21,21 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE)); OUT = os.path.join(HERE, "out")
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_ratio_cycles"))
-from analysis.approved_data import fingerprints, load_us_etf  # noqa: E402
+from analysis.approved_data import fingerprints, load_us_etf, load_us_gold  # noqa: E402
 from analysis.ratio_engine import PIT, book, counts, null_A, null_B, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (palette, page styling, percentile)
 import zwin as ZW  # noqa: E402  (the z windows)
 import variants as VR  # noqa: E402  (the rule through the engine's book)
 
-MAIN = ["GCC", "FTGC", "COMT", "PDBC", "BCI", "BCD", "COM", "CMDY", "SDCI"]; SHORT = ["HGER", "NBCM", "PIT", "CERY"]; ETFS = MAIN + SHORT
+MAIN = ["GCC", "FTGC", "COMT", "PDBC", "BCI", "BCD", "COM", "CMDY", "SDCI"]; SHORT = ["HGER", "NBCM", "PIT", "CERY"]
+GOLD_ETF = ["GLD"]   # added 2026-11-20 (E08.md): SPY against gold, reported on its own; pair_id 13 keeps the ETFs' seeds
+ETFS = MAIN + SHORT + GOLD_ETF
+GROUP = {**{e: "main" for e in MAIN}, **{e: "short" for e in SHORT}, **{e: "gold" for e in GOLD_ETF}}
+SUFFIX = {"main": "", "short": " (short)", "gold": " (gold)"}
 NAMES = {"GCC": "WisdomTree Enhanced Commodity", "FTGC": "First Trust Global Tactical Commodity", "COMT": "iShares GSCI Commodity Dynamic Roll", "PDBC": "Invesco Optimum Yield Diversified Commodity",
          "BCI": "abrdn Bloomberg All Commodity", "BCD": "abrdn Bloomberg All Commodity Longer Dated", "COM": "Direxion Auspice Broad Commodity", "CMDY": "iShares Bloomberg Roll Select Commodity",
-         "SDCI": "USCF SummerHaven Dynamic Commodity", "HGER": "Harbor Commodity All-Weather", "NBCM": "Neuberger Berman Commodity Strategy", "PIT": "VanEck Commodity Strategy", "CERY": "SPDR Bloomberg Enhanced Roll Yield"}
+         "SDCI": "USCF SummerHaven Dynamic Commodity", "HGER": "Harbor Commodity All-Weather", "NBCM": "Neuberger Berman Commodity Strategy", "PIT": "VanEck Commodity Strategy", "CERY": "SPDR Bloomberg Enhanced Roll Yield",
+         "GLD": "SPDR Gold Shares (gold bullion)"}
 COST = VR.COST; SEED_NB = 100; LO, HI = E1.LO, E1.HI; DEFAULT_ETF = "PDBC"
 
 
@@ -72,7 +77,7 @@ def measures(lnr: pd.Series, z52: pd.Series) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--draws", type=int, default=500); ND = ap.parse_args().draws
-    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_us_etf()
+    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_us_etf(); px.update(load_us_gold())
     checks = {"close_max_abs_diff": 0.0, "calendar_mismatch": [], "cut_checks": 0, "cut_violations": [], "null_draws": 0, "null_count_mismatch": 0}
     REL, RULE, TRADES, CURVES, PAIRD, SEL = {}, [], [], {}, {}, {}
     wk_ret = {}
@@ -93,7 +98,7 @@ def main():
         m_all = measures(lnr, z52)
         # §2 the score's inputs: the first half of the ETF's own period
         h1 = lnr[lnr.index <= mid]; m_h1 = measures(h1, z52[z52.index <= mid]) if len(h1) > 60 else None
-        REL[etf] = {"name": NAMES[etf], "group": "main" if etf in MAIN else "short", "first": first.date().isoformat(), "last": last.date().isoformat(), "mid": mid.date().isoformat(),
+        REL[etf] = {"name": NAMES[etf], "group": GROUP[etf], "first": first.date().isoformat(), "last": last.date().isoformat(), "mid": mid.date().isoformat(),
                     "years": (last - first).days / 365.25, "corr": corr, "beta": beta, "corr52_min": float(rc.min()) if len(rc) else np.nan, "corr52_max": float(rc.max()) if len(rc) else np.nan,
                     "worst5_spy": float(worst["spy"].mean()), "worst5_etf": float(worst["etf"].mean()), "worst5_months": [f"{y}-{m:02d}" for y, m in worst.index],
                     "etf_cagr": float((pf["ca"].iloc[-1] / pf["ca"].iloc[0]) ** (365.25 / (last - first).days) - 1), "spy_cagr": float((pf["cb"].iloc[-1] / pf["cb"].iloc[0]) ** (365.25 / (last - first).days) - 1),
@@ -160,7 +165,11 @@ def main():
     audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "draws_per_null": ND, "seed": f"default_rng([pair_id (+{SEED_NB} for N-B), 0, draw, window_id])",
              "cost_bps_round_trip": COST, "fill": "next session's close (rule H3; the source has closes only)", "checks": checks, "chosen_by_first_half_score": chosen, "score_order": order,
              "main_pair_windows": int(len(rum)), "main_ahead_of_5050": int((rum["excess"] > 0).sum()), "main_na_notable_high": int((rum["na_pct"] >= HI).sum()), "main_na_notable_low": int((rum["na_pct"] <= LO).sum()),
-             "main_nb_notable_high": int((rum["nb_pct"] >= HI).sum()), "main_nb_notable_low": int((rum["nb_pct"] <= LO).sum()), "seconds": round(time.time() - t0)}
+             "main_nb_notable_high": int((rum["nb_pct"] >= HI).sum()), "main_nb_notable_low": int((rum["nb_pct"] <= LO).sum())}
+    rug = RU[(RU["group"] == "gold") & (RU["status"] == "ok")]   # GLD ÷ SPY, reported on its own (added 2026-11-20)
+    audit.update({"gold_windows": int(len(rug)), "gold_ahead_of_5050": int((rug["excess"] > 0).sum()), "gold_na_notable_high": int((rug["na_pct"] >= HI).sum()), "gold_na_notable_low": int((rug["na_pct"] <= LO).sum()),
+                  "gold_nb_notable_high": int((rug["nb_pct"] >= HI).sum()), "gold_nb_notable_low": int((rug["nb_pct"] <= LO).sum()), "gold_median_excess": float(rug["excess"].median()) if len(rug) else None,
+                  "seconds": round(time.time() - t0)})
     json.dump(audit, open(os.path.join(OUT, "audit.json"), "w", encoding="utf-8"), indent=1, default=str)
 
     # ---------------------------------------------------------------- results (markdown)
@@ -170,13 +179,13 @@ def main():
     def sg2(v): return "—" if v is None or v != v else f"{v:+.2f}"
     wl = {w: f"{lab}{' (daily)' if f == 'D' else ''}" for w, lab, f, _ in ZW.WINDOWS}
     md = [f"# E08 results — commodity ETFs against SPY (EXPLORATORY)\n",
-          f"_Generated by `explore/E08_commodity_spy/commodity.py` on {audit['run_date']} from the US ETF data approved 2026-11-19 (total return; launch periods dropped; fills at the next close). Each ETF ÷ SPY; Rule R (T03's: ±1, exit at 0) on every z window, 10.4 bps per side; {ND} draws per null. Description, not a finding; percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
+          f"_Generated by `explore/E08_commodity_spy/commodity.py` on {audit['run_date']} from the US ETF data approved 2026-11-19 and GLD approved 2026-11-20 (total return; launch periods dropped; fills at the next close). Each ETF ÷ SPY, and GLD ÷ SPY (gold, added 2026-11-20); Rule R (T03's: ±1, exit at 0) on every z window, 10.4 bps per side; {ND} draws per null. Description, not a finding; percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
           f"**Checks:** pair closes equal the loader's (max difference {checks['close_max_abs_diff']:.1e}); calendars are the legs' common days; the 52-week z passes the cut-history check ({checks['cut_checks']} cuts, 0 violations); {checks['null_draws']:,} null draws, every one kept its counts.\n",
           "## 1. The relationship (whole usable period)\n",
           "| ETF | dates | ETF / SPY CAGR | weekly correlation with SPY (52-wk range) | beta | in SPY's 5 worst months: SPY / ETF | half-life (weeks) | z sign changes a year | variance ratio | autocorrelation |",
           "|---|---|---|---|---|---|---|---|---|---|"]
     for e in ETFS:
-        v = REL[e]; md.append(f"| {e}{'' if v['group'] == 'main' else ' (short)'} | {v['first']} → {v['last']} | {fp(v['etf_cagr'])} / {fp(v['spy_cagr'])} | {v['corr']:+.2f} ({sg2(v['corr52_min'])} to {sg2(v['corr52_max'])}) | {v['beta']:.2f} | "
+        v = REL[e]; md.append(f"| {e}{SUFFIX[v['group']]} | {v['first']} → {v['last']} | {fp(v['etf_cagr'])} / {fp(v['spy_cagr'])} | {v['corr']:+.2f} ({sg2(v['corr52_min'])} to {sg2(v['corr52_max'])}) | {v['beta']:.2f} | "
                               f"{fp(v['worst5_spy'])} / {fp(v['worst5_etf'])} | {v['all_half_life']:.0f} | {v['all_zcross_yr']:.1f} | {v['all_vr']:.2f} | {v['all_ac']:+.2f} |")
     md += ["\n## 2. The best relationship for the switch, chosen on the first half of each ETF's period (fixed in E08.md before the run)\n",
            "| ETF | first half | rank: half-life / z changes / variance ratio | score | chosen | second half, Rule R 52 weeks: excess over 50/50 | second half, all windows: median excess (windows ahead) |", "|---|---|---|---|---|---|---|"]
@@ -189,14 +198,16 @@ def main():
         for w, *_ in ZW.WINDOWS:
             q = RU[(RU["etf"] == e) & (RU["window"] == w)]
             cells.append("too short" if not len(q) or q["status"].iloc[0] != "ok" else f"{pp(q['excess'].iloc[0])} ({pq(q['na_pct'].iloc[0])} · {pq(q['nb_pct'].iloc[0])}; {int(q['trades'].iloc[0])} tr)")
-        md.append(f"| {e} | " + " | ".join(cells) + " |")
+        md.append(f"| {e}{SUFFIX[GROUP[e]]} | " + " | ".join(cells) + " |")
     md.append(f"\nMain ETFs: ahead of 50/50 in {audit['main_ahead_of_5050']} of {audit['main_pair_windows']} ETF-windows; N-A percentile notable high in {audit['main_na_notable_high']}, notable low in {audit['main_na_notable_low']}; N-B notable high in {audit['main_nb_notable_high']}, low in {audit['main_nb_notable_low']}.\n")
+    md.append(f"Gold (GLD ÷ SPY, added 2026-11-20, reported on its own): ahead of 50/50 in {audit['gold_ahead_of_5050']} of {audit['gold_windows']} windows (median excess {pp(audit['gold_median_excess'])}); "
+              f"N-A notable high in {audit['gold_na_notable_high']}, low in {audit['gold_na_notable_low']}; N-B notable high in {audit['gold_nb_notable_high']}, low in {audit['gold_nb_notable_low']}.\n")
     open(os.path.join(OUT, "E08_results.md"), "w", encoding="utf-8").write("\n".join(md) + "\n")
 
     # ---------------------------------------------------------------- the page
     # weekly-return correlations among the main ETFs and SPY (each pair over its common weeks)
-    names_c = MAIN + ["SPY"]; spyw = np.log(px["SPY"]["close"]).groupby(pd.Grouper(freq="W-FRI")).last().diff()
-    wr = {e: np.log(px[e]["close"]).groupby(pd.Grouper(freq="W-FRI")).last().diff() for e in MAIN}; wr["SPY"] = spyw
+    names_c = MAIN + GOLD_ETF + ["SPY"]; spyw = np.log(px["SPY"]["close"]).groupby(pd.Grouper(freq="W-FRI")).last().diff()
+    wr = {e: np.log(px[e]["close"]).groupby(pd.Grouper(freq="W-FRI")).last().diff() for e in MAIN + GOLD_ETF}; wr["SPY"] = spyw
     CM = [[r4(pd.concat([wr[a_], wr[b_]], axis=1).dropna().corr().iloc[0, 1], 3) for b_ in names_c] for a_ in names_c]
     RUJ = {}
     for _, r in RU.iterrows():
@@ -204,13 +215,13 @@ def main():
                                                                                     r6(r["excess_h1"]), r6(r["excess_h2"]), r4(r["na_pct"], 2), r4(r["nb_pct"], 2), r["first"], r["last"], int(r["open"])]
     RELJ = {e: {k: (r6(v) if isinstance(v, float) else v) for k, v in REL[e].items()} for e in ETFS}
     SELJ = {e: {k: (r6(v) if isinstance(v, float) else v) for k, v in SEL[e].items()} for e in MAIN}
-    DATA = {"etfs": ETFS, "main": MAIN, "names": NAMES, "windows": [[w, lab, f] for w, lab, f, _ in ZW.WINDOWS], "wlab": wl, "lo": LO, "hi": HI, "draws": ND, "rel": RELJ, "sel": SELJ, "order": order, "chosen": chosen,
-            "rule": RUJ, "pair": PAIRD, "curves": CURVES, "cm": {"names": names_c, "m": CM}, "audit": {k: audit[k] for k in ("main_pair_windows", "main_ahead_of_5050", "main_na_notable_high", "main_na_notable_low", "main_nb_notable_high", "main_nb_notable_low")},
+    DATA = {"etfs": ETFS, "main": MAIN, "group": GROUP, "suffix": SUFFIX, "names": NAMES, "windows": [[w, lab, f] for w, lab, f, _ in ZW.WINDOWS], "wlab": wl, "lo": LO, "hi": HI, "draws": ND, "rel": RELJ, "sel": SELJ, "order": order, "chosen": chosen,
+            "rule": RUJ, "pair": PAIRD, "curves": CURVES, "cm": {"names": names_c, "m": CM}, "audit": {k: audit[k] for k in ("main_pair_windows", "main_ahead_of_5050", "main_na_notable_high", "main_na_notable_low", "main_nb_notable_high", "main_nb_notable_low", "gold_windows", "gold_ahead_of_5050")},
             "defaults": {"etf": DEFAULT_ETF, "w": ZW.DEFAULT}}
     blob = json.dumps(DATA, separators=(",", ":"), ensure_ascii=False, default=lambda o: o.item() if hasattr(o, "item") else str(o)).replace("</", "<\\/")
     def sel(i, lab, opts, default):
         return f"<label>{lab} <select id='{i}'>" + "".join(f"<option value='{html.escape(str(v), quote=True)}'{' selected' if str(v) == str(default) else ''}>{html.escape(t)}</option>" for v, t in opts) + "</select></label>"
-    controls = sel("etf", "ETF", [(e, e + ("" if e in MAIN else " (short)")) for e in ETFS], DEFAULT_ETF) + sel("zwin", "z window", [(w, wl[w]) for w, *_ in ZW.WINDOWS], ZW.DEFAULT)
+    controls = sel("etf", "ETF", [(e, e + SUFFIX[GROUP[e]]) for e in ETFS], DEFAULT_ETF) + sel("zwin", "z window", [(w, wl[w]) for w, *_ in ZW.WINDOWS], ZW.DEFAULT)
     best_corr = min(MAIN, key=lambda e: REL[e]["corr"])
     key = (f"<p style='margin:4px 0'><b>The relationship.</b> The nine main ETFs are all broad commodity baskets: their weekly returns correlate with SPY at {min(REL[e]['corr'] for e in MAIN):+.2f} to {max(REL[e]['corr'] for e in MAIN):+.2f} over their periods "
            f"(lowest: {best_corr}, {REL[best_corr]['corr']:+.2f}), and with each other far more. Over 2010–2026 SPY made {fp(REL['GCC']['spy_cagr'])} a year; the longest-lived ETF, GCC, {fp(REL['GCC']['etf_cagr'])}.</p>"
@@ -219,12 +230,17 @@ def main():
            f"{pp(np.median([o['h2_median'] for o in ot]))} for the other six ({sum(o['h2_ahead'] for o in ot)} of {sum(o['n'] for o in ot)}).</p>"
            f"<p style='margin:4px 0'><b>The ratio switch</b> (Rule R) on the nine main ETFs over all seven windows: ahead of 50/50 bought once in {audit['main_ahead_of_5050']} of {audit['main_pair_windows']} ETF-windows; "
            f"against random timing (N-A) notably better in {audit['main_na_notable_high']} and notably worse in {audit['main_na_notable_low']}; against flipped legs (N-B) notably better in {audit['main_nb_notable_high']}, worse in {audit['main_nb_notable_low']}.</p>")
+    gv = REL["GLD"]
+    key += (f"<p style='margin:4px 0'><b>SPY against gold</b> (GLD ÷ SPY, added 2026-11-20, reported on its own; {gv['first']} → {gv['last']}): weekly correlation {gv['corr']:+.2f} (52-week range {sg2(gv['corr52_min'])} to {sg2(gv['corr52_max'])}), beta {gv['beta']:.2f}; "
+            f"in SPY's five worst months ({fp(gv['worst5_spy'])} on average) GLD made {fp(gv['worst5_etf'])}. GLD {fp(gv['etf_cagr'])} a year against SPY's {fp(gv['spy_cagr'])}; the ratio's half-life {gv['all_half_life']:.0f} weeks, variance ratio {gv['all_vr']:.2f}. "
+            f"Rule R: ahead of 50/50 in {audit['gold_ahead_of_5050']} of {audit['gold_windows']} windows (median excess {pp(audit['gold_median_excess'])}); against random timing (N-A) notably better in {audit['gold_na_notable_high']}, worse in {audit['gold_na_notable_low']}; "
+            f"against flipped legs (N-B) better in {audit['gold_nb_notable_high']}, worse in {audit['gold_nb_notable_low']}.</p>")
     from plotly.offline import get_plotlyjs
     H = [E1.PAGE_HEAD.replace("__CSS__", E1.CSS + CSS_EXTRA).replace("<title>Ratio cycles</title>", "<title>Commodities vs SPY</title>"),
          "<header class='bar'><div class='bar-inner'><b>E08 · commodity ETFs ÷ SPY</b><span class='tag'>EXPLORATORY</span>", controls, "<button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>Commodity ETFs against SPY: which relationship is best, and does the ratio switch work there?</h1>",
          f"<p>Thirteen broad commodity ETFs (the desk's comparison) against SPY, each as the ratio ETF ÷ SPY. All prices are total return (distributions reinvested); each fund's launch period is dropped; trades fill at the next session's close, 10.4 bps each way. "
-         f"Nine ETFs have five or more years (GCC from 2010; FTGC 2015; COMT, PDBC 2016; BCI, BCD, COM 2019; CMDY, SDCI 2020); HGER, NBCM, PIT (2024) and CERY (2026) are short and only reported. To 2026-11-18. Generated {audit['run_date']}. <b>Description, not a finding</b>; these pairs were explored, so they can no longer serve as an unseen test.</p>",
+         f"Nine ETFs have five or more years (GCC from 2010; FTGC 2015; COMT, PDBC 2016; BCI, BCD, COM 2019; CMDY, SDCI 2020); HGER, NBCM, PIT (2024) and CERY (2026) are short and only reported. Added on 2026-11-20: <b>SPY against gold</b>, GLD ÷ SPY from 2010, reported on its own. To 2026-11-18. Generated {audit['run_date']}. <b>Description, not a finding</b>; these pairs were explored, so they can no longer serve as an unseen test.</p>",
          "<div class='card'>" + key + "</div>",
          "<h2>1 · The relationship, ETF by ETF</h2><p class='note'>Weekly log returns over each ETF's usable period. The ratio's character: half-life of mean reversion (shorter = the ratio comes back faster), how often the 52-week z changes sign, the variance ratio (below 1 = moves tend to reverse), and the autocorrelation of weekly changes.</p>",
          "<div class='card'><div id='g_corr' class='plot'></div><div id='t_rel'></div></div><div class='card'><div id='g_cm' class='plot'></div></div>",
@@ -235,7 +251,8 @@ def main():
          "<h2>4 · The chosen ETF: the ratio, the trades and the equity curves</h2>",
          "<div class='card'><div id='g_pair' class='plot'></div></div><div class='card'><div id='g_eq' class='plot'></div><div id='g_dd' class='plot'></div></div>",
          "<h2>Method and limits</h2><div class='card'><ul>"
-         "<li><b>Data.</b> analysis/approved_data.load_us_etf(): total return (H4), launch periods dropped (H5), fill = close (H3: the source has closes only). Review: data/DATA_REVIEW_US_ETF.md (F-RA-D12, F-RA-D13); spot checks against issuer data are an open item.</li>"
+         "<li><b>Data.</b> analysis/approved_data.load_us_etf(): total return (H4), launch periods dropped (H5), fill = close (H3: the source has closes only). Review: data/DATA_REVIEW_US_ETF.md (F-RA-D12, F-RA-D13); spot checks against issuer data are an open item. "
+         "GLD: analysis/approved_data.load_us_gold() (approved 2026-11-20; no distributions; review data/DATA_REVIEW_US_GOLD.md).</li>"
          "<li><b>Rule and book.</b> explore/E01_ratio_cycles/variants.py and analysis/ratio_engine.book, unchanged; decisions on the last trading day of each ISO week; daily windows read at the decision day.</li>"
          f"<li><b>Nulls.</b> analysis/ratio_engine.null_A and null_B, {ND} draws each, seed default_rng([pair_id (+100 for N-B), 0, draw, window_id]); every draw's counts measured ({checks['null_draws']:,} draws, all kept).</li>"
          "<li><b>Limits.</b> 6.9–16.9 years per main ETF, one regime for SPY; the nine ETFs move together, so they are not nine independent tests; curves on this page are at weekly decision closes (the tables' drawdowns are daily). Design written before the first run: explore/E08_commodity_spy/E08.md.</li></ul></div>",
@@ -276,14 +293,14 @@ function S(){return {e:v('etf'), w:v('zwin')};}
 
 function drawRel(s){
   const c=th(), K=COL(), es=D.etfs, R=D.rel;
-  Plotly.react('g_corr',[{type:'bar',x:es,y:es.map(e=>R[e].corr),marker:{color:es.map(e=>e===s.e?K.rule:(D.main.includes(e)?(isDark()?'#5f5e5a':'#c3c2b7'):(isDark()?'#383835':'#e1e0d9')))},
+  Plotly.react('g_corr',[{type:'bar',x:es,y:es.map(e=>R[e].corr),marker:{color:es.map(e=>e===s.e?K.rule:(D.group[e]!=='short'?(isDark()?'#5f5e5a':'#c3c2b7'):(isDark()?'#383835':'#e1e0d9')))},
     text:es.map(e=>sg(R[e].corr)),textposition:'outside',cliponaxis:false,customdata:es.map(e=>R[e].first+' → '+R[e].last+' · beta '+f2(R[e].beta)+' · 52-week range '+sg(R[e].corr52_min)+' to '+sg(R[e].corr52_max)),hovertemplate:'%{x}: %{text}<br>%{customdata}<extra></extra>'}],
     layout(two('Weekly correlation of each ETF with SPY, over its usable period','blue = the ETF picked at the top; pale = short history (reported only)'),380,{xaxis:ax(),yaxis:ax({title:{text:'correlation',font:{color:c.ink2}},zeroline:true,zerolinecolor:c.axis})}),CFG);
   document.getElementById('t_rel').innerHTML=table(['ETF','dates','ETF / SPY CAGR','correlation (52-wk range)','beta','SPY\'s 5 worst months: SPY / ETF','half-life (wk)','z changes a year','variance ratio','autocorr.'],
-    es.map(e=>{const r=R[e];return [(e===s.e?'<b>'+e+'</b>':e)+(r.group==='main'?'':' (short)')+"<br><span class='note'>"+r.name+'</span>',r.first+' → '+r.last,fp(r.etf_cagr)+' / '+fp(r.spy_cagr),sg(r.corr)+' ('+sg(r.corr52_min)+' to '+sg(r.corr52_max)+')',f2(r.beta),fp(r.worst5_spy)+' / '+fp(r.worst5_etf),f2(r.all_half_life,0),f2(r.all_zcross_yr,1),f2(r.all_vr),sg(r.all_ac)];}));
+    es.map(e=>{const r=R[e];return [(e===s.e?'<b>'+e+'</b>':e)+D.suffix[r.group]+"<br><span class='note'>"+r.name+'</span>',r.first+' → '+r.last,fp(r.etf_cagr)+' / '+fp(r.spy_cagr),sg(r.corr)+' ('+sg(r.corr52_min)+' to '+sg(r.corr52_max)+')',f2(r.beta),fp(r.worst5_spy)+' / '+fp(r.worst5_etf),f2(r.all_half_life,0),f2(r.all_zcross_yr,1),f2(r.all_vr),sg(r.all_ac)];}));
   const n=D.cm.names, m=D.cm.m;
   Plotly.react('g_cm',[{type:'heatmap',z:m,x:n,y:n,zmin:-1,zmax:1,colorscale:heatColors(),text:m.map(r=>r.map(x=>x===null?'':x.toFixed(2))),texttemplate:'%{text}',hovertemplate:'%{y} with %{x}: %{z:.2f}<extra></extra>',xgap:2,ygap:2,colorbar:{thickness:12,tickfont:{color:c.muted}}}],
-    layout(two('Weekly-return correlations among the nine main ETFs and SPY','each pair over the weeks both trade (from 2015 to 2020 depending on the ETFs)'),520,{margin:{l:70,r:24,t:100,b:60},xaxis:ax({showgrid:false,showline:false,side:'bottom'}),yaxis:ax({autorange:'reversed',showgrid:false,showline:false})}),CFG);
+    layout(two('Weekly-return correlations among the nine main ETFs, gold (GLD) and SPY','each pair over the weeks both trade (from 2010 to 2020 depending on the ETFs)'),560,{margin:{l:70,r:24,t:100,b:60},xaxis:ax({showgrid:false,showline:false,side:'bottom'}),yaxis:ax({autorange:'reversed',showgrid:false,showline:false})}),CFG);
 }
 function drawSel(s){
   const c=th(), K=COL(), o=D.order, S_=D.sel;
@@ -299,9 +316,9 @@ function drawRule(s){
   const txt=es.map(e=>ws.map(w=>{const q=D.rule[e]&&D.rule[e][w];return q?(q[5]*100).toFixed(1)+((q[9]<=D.lo||q[9]>=D.hi)?'*':''):'';}));
   const hv=es.map(e=>ws.map(w=>{const q=D.rule[e]&&D.rule[e][w];return q?e+' ÷ SPY, z window '+wl(w)+' ('+q[11]+' → '+q[12]+')<br>excess over 50/50 '+fpp(q[5])+' (first half '+fpp(q[7])+', second '+fpp(q[8])+')<br>'+q[0]+' trades, '+pc(q[1])+' worked; N-A percentile '+q[9].toFixed(1)+', N-B '+q[10].toFixed(1):e+', '+wl(w)+': too short';}));
   const zr=Math.max(0.01,...z.flat().filter(x=>x!==null).map(Math.abs));
-  Plotly.react('g_heat',[{type:'heatmap',z:z,x:ws.map(wl),y:es.map(e=>D.main.includes(e)?e:e+' (short)'),text:txt,texttemplate:'%{text}',customdata:hv,hovertemplate:'%{customdata}<extra></extra>',zmin:-zr,zmax:zr,colorscale:heatColors(),xgap:2,ygap:2,
+  Plotly.react('g_heat',[{type:'heatmap',z:z,x:ws.map(wl),y:es.map(e=>e+D.suffix[D.group[e]]),text:txt,texttemplate:'%{text}',customdata:hv,hovertemplate:'%{customdata}<extra></extra>',zmin:-zr,zmax:zr,colorscale:heatColors(),xgap:2,ygap:2,
     colorbar:{thickness:12,tickformat:'.1%',tickfont:{color:c.muted},title:{text:'excess',side:'right',font:{color:c.ink2}}}}],
-    layout(two('Rule R on every ETF ÷ SPY and z window · excess CAGR over 50/50 bought once (pp a year)','red = ahead of 50/50; * = notable against random timing (N-A); main ETFs: ahead in '+D.audit.main_ahead_of_5050+' of '+D.audit.main_pair_windows+' ETF-windows'),560,
+    layout(two('Rule R on every ETF ÷ SPY and z window · excess CAGR over 50/50 bought once (pp a year)','red = ahead of 50/50; * = notable against random timing (N-A); main ETFs: ahead in '+D.audit.main_ahead_of_5050+' of '+D.audit.main_pair_windows+' ETF-windows; gold (GLD): '+D.audit.gold_ahead_of_5050+' of '+D.audit.gold_windows),590,
     {margin:{l:110,r:24,t:100,b:40},xaxis:ax({side:'top',showgrid:false,showline:false}),yaxis:ax({autorange:'reversed',showgrid:false,showline:false})}),CFG);
   const R=D.rule[s.e]||{};
   document.getElementById('t_rule').innerHTML="<p class='note' style='margin:4px 0'><b>"+s.e+' ÷ SPY</b> ('+D.names[s.e]+'), every z window:</p>'+table(['z window','dates','closed trades','worked','mean extra','CAGR','50/50 CAGR','excess','first half','second half','max drawdown','N-A pct','N-B pct'],
