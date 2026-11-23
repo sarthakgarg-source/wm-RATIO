@@ -122,5 +122,48 @@ def load_us_etf() -> dict:
     return out
 
 
+# ------------------------------------------------------------------------------------------------------- US gold ETF (added 2026-11-20)
+US_GOLD = "us_gold_ohlcv.csv"
+
+
+def load_us_gold() -> dict:
+    """GLD (SPDR Gold Shares), for SPY against gold: the same rules as load_us_etf() — start under rule H5, then H1–H3.
+    GLD pays no distributions (none in the source; review DATA_REVIEW_US_GOLD.md), so its price is already a total
+    return and rule H4 has nothing to apply. dict 'GLD' -> DataFrame(date index; open, high, low, close, fill, stale_ohl)."""
+    raw = pd.read_csv(open_approved(US_GOLD), parse_dates=["date"])
+    out = {}
+    for t, g in raw.groupby("ticker"):
+        g = g.dropna(subset=["close"]).drop_duplicates("date")
+        out[t] = _clean(g[g["date"] >= us_start(g["date"].min())][["date", "open", "high", "low", "close"]].sort_values("date"))
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------- US small-cap ETF (added 2026-11-23)
+US_SMALL_PRICES, US_SMALL_DIVIDENDS = "us_small_ohlcv.csv", "us_small_dividends.csv"
+SPLITS = {"IJR": (("2017-01-19", 2.0),)}   # rule H6: measured in DATA_REVIEW_US_SMALL.md from the second source's raw closes
+
+
+def split_adjust_dividends(dv: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """Rule H6 (IJR): the price file is split-adjusted (its closes are the second source's raw closes divided by the split
+    ratio before each split) but the distribution table holds the amounts as paid, so a distribution whose ex-date is
+    before a split is divided by that split's ratio. IJR: 2-for-1 on 2017-01-19."""
+    dv = dv.copy()
+    for d, k in SPLITS.get(ticker, ()):
+        dv.loc[dv["ex_date"] < pd.Timestamp(d), "gross"] = dv.loc[dv["ex_date"] < pd.Timestamp(d), "gross"] / k
+    return dv
+
+
+def load_us_small() -> dict:
+    """IJR (iShares Core S&P Small-Cap ETF): start under rule H5, distributions put on the price file's split basis (H6),
+    total return (H4), then H1–H3 as load_us_etf(). dict 'IJR' -> DataFrame(date index; open, high, low, close, fill, stale_ohl)."""
+    raw = pd.read_csv(open_approved(US_SMALL_PRICES), parse_dates=["date"]); dv = pd.read_csv(open_approved(US_SMALL_DIVIDENDS), parse_dates=["ex_date"])
+    out = {}
+    for t, g in raw.groupby("ticker"):
+        g = g.dropna(subset=["close"]).drop_duplicates("date")
+        s = g[g["date"] >= us_start(g["date"].min())][["date", "open", "high", "low", "close"]].sort_values("date")
+        out[t] = _clean(total_return(s, split_adjust_dividends(dv[dv["ticker"] == t], t)))
+    return out
+
+
 def fingerprints() -> dict:
     return {f: _sha256(os.path.join(DATA, f)) for f in _approved()}
