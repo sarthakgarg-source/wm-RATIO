@@ -19,7 +19,7 @@ as a second exit, at the opposite band); **no maximum hold**.
 6. An independent verifier that imports nothing from the engine must agree, and must fail on a corrupted copy.
 7. If any gate fails, stop: read nothing, fix it, rerun into a new evidence folder.
 8. No person's name anywhere in the repo — code, comments, docs, commits (write "the review of <date>", "the desk").
-9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S06, M02, D16 (+ 2 open).
+9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S06, M02, D18 (+ 2 open).
 
 **Current tests:** T02 and T03 are the same rule under two numbers (the desk's choice of 2026-11-17): T02 judged at the
 95th percentile, T03 at the 98th. On 2026-11-17 the earlier log-ratio test and the time limit on each trade were removed
@@ -41,7 +41,11 @@ data/        raw files (read-only), data_review.py → DATA_REVIEW.md, APPROVED_
              data_review_us_factor.py → DATA_REVIEW_US_FACTOR.md (F-RA-D15: four 2026 splits), read through
              approved_data.load_us_factor() (rules H3–H6; the splits from us_factor_splits.csv); US S&P 500 factor ETFs
              (SPMO, SPHQ, RPV standing in for SPVU; approved 2026-11-26): fetch_us_sp_factor.py, data_review_us_sp_factor.py →
-             DATA_REVIEW_US_SP_FACTOR.md (F-RA-D16: SPMO from 2018-01-01), read through the same load_us_factor()
+             DATA_REVIEW_US_SP_FACTOR.md (F-RA-D16: SPMO from 2018-01-01), read through the same load_us_factor();
+             the latest Indian series (approved 2026-11-26), copied byte for byte from the desk's asset-allocation repository
+             (wm-AA) by fetch_aa.py: N100, MC100, SC100 to 2026-11-20, MCX gold from 2005 (rules H7–H8, F-RA-D18) and two
+             liquid-ETF cash levels to 2026-11-25 (F-RA-D17); data_review_aa.py → DATA_REVIEW_AA.md; read through
+             approved_data.load_india_latest() (load_daily() unchanged, so the locked tests keep their inputs)
 analysis/    approved_data.py (the boundary), ratio_engine.py (engine + nulls), verify_ratio.py (independent checker)
 tests/T02/   PLAN.md, T02.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
              check_page.py, T02_results.html, evidence/<run>/

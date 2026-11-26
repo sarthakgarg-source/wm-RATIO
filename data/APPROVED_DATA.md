@@ -17,6 +17,15 @@ Tests may read ONLY the files below, through `analysis/approved_data.py`, which 
 | us_sp_factor_ohlcv.csv | `ae51bf2de5aeac12947bac8d1570d248673732ba0345cba0789b17e5be39a792` | 427,719 | 12,744 | 2005-12-13 | 2026-11-18 | PASS WITH NOTES |
 | us_sp_factor_dividends.csv | `5581388c1d149a5bc53a8e4dc1fb27a2b7e2cca66734b050584c0ef88635c8ce` | 8,264 | 178 | 2010-03-19 | 2026-09-21 | PASS WITH NOTES |
 | us_sp_factor_splits.csv | `9353e39fe02edb88b4ccb4334e951fa25c0908a7a3e88dd6f941ff55d71edae8` | 108 | 0 | — | — | PASS WITH NOTES |
+| aa_index_n100_pre2019.csv | `167c73492dd424cadf6e665546321ffd31d7da35ce39142f93c6f7282d742089` | 158,099 | 3,237 | 2005-11-30 | 2019-01-04 | PASS |
+| aa_index_n100_2019_2026.csv | `4563e0b66f1aeeb0e7c0926d43e944b8b1bfe52f8527136e6f55042dd04c677b` | 107,276 | 1,951 | 2019-01-01 | 2026-11-20 | PASS |
+| aa_index_mc100_pre2019.csv | `6586a0a392cbd73c3e6a8ee5d9644ba255c11f0171cb6bc3fd1cee4e6b26a65a` | 158,933 | 3,329 | 2005-07-18 | 2019-01-04 | PASS |
+| aa_index_mc100_2019_2026.csv | `97387340ac4803b78ecf1097695624c0e1514ac608c0a09aa3ac07f66659d129` | 91,767 | 1,951 | 2019-01-01 | 2026-11-20 | PASS |
+| aa_index_sc100_pre2019.csv | `6b6ebc3a3144ec74017cf24365efd0845ba6c639ca1a43603a646c2914fc9c21` | 163,764 | 3,715 | 2004-01-01 | 2019-01-04 | PASS |
+| aa_index_sc100_2019_2026.csv | `e2421301b6ed87af64dbb67f06671bb1ec7591dc1b7d512c64385e7018cda04c` | 88,267 | 1,951 | 2019-01-01 | 2026-11-20 | PASS |
+| aa_mauc1_daily.csv | `61cde69e5ce326072127095e4442a0f860555201a996424cc2d98a613511cb86` | 316,665 | 6,354 | 2003-11-10 | 2026-11-20 | PASS WITH NOTES |
+| aa_liquid_lbes.csv | `26ae7f7c9e876ab41c31036926b418dbec69d5736774e5e91864cab1dd2c4ffd` | 167,127 | 5,767 | 2007-06-29 | 2026-11-25 | PASS WITH NOTES |
+| aa_liquid_case.csv | `ac17a7fb1f2610010842a622231a9b8b6a71fcb3fd7b56bef95196eab555a749` | 125,370 | 5,630 | 2007-06-29 | 2026-11-25 | PASS WITH NOTES |
 
 The first two approved 2026-11-12 by the review in `DATA_REVIEW.md`. The two US ETF files (SPY and 13 broad commodity ETFs) approved
 2026-11-19 by the data owner on the review in `DATA_REVIEW_US_ETF.md`; they are read only through `load_us_etf()` with rules H3
@@ -37,4 +46,11 @@ S&P 500 factor ETF files (SPMO momentum, SPHQ quality, RPV pure value standing i
 hold) approved 2026-11-26 by the data owner on the review in `DATA_REVIEW_US_SP_FACTOR.md`; read through the same
 `load_us_factor()` with rules H3, H4 and H5, SPMO from 2018-01-01 (F-RA-D16: it traded thinly until then; a per-fund override of
 H5); no splits (the splits file is empty and kept for the loader's shape). `us_sp_factor_eodhd_check.csv` is that review's second
-source and is not approved for any study. All approved files are read-only in the working tree.
+source and is not approved for any study. The nine files of the desk's latest Indian series (copied byte for byte from its
+asset-allocation repository, wm-AA, commit e9cf7b25b45b9b66b53388decb5552031da87a14: N100, MC100 and SC100 to 2026-11-20, MCX
+gold, and two liquid-ETF cash levels to 2026-11-25) approved 2026-11-26 by the data owner on the review in `DATA_REVIEW_AA.md`;
+read only through `load_india_latest()`: the indices with rules H1–H3 (they equal `index_ohlcv_all.csv` on every common day),
+gold with rules H7 (a non-positive close is dropped) and H8 (from 2005-01-01) (F-RA-D18), the cash levels as single daily prices
+(F-RA-D17: before 2024-01-24 they are one series with no recorded source; disclose it). `load_daily()` and its two files are
+unchanged, so the locked tests keep their inputs. `aa_db_check.csv` is that review's second source and is not approved for any
+study. All approved files are read-only in the working tree.

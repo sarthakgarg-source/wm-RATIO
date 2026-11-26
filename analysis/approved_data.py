@@ -206,5 +206,38 @@ def load_us_factor() -> dict:
     return out
 
 
+# ------------------------------------------------------------------------------------------------------- the latest Indian series (added 2026-11-26)
+AA_INDEX = {"N100": "n100", "MC100": "mc100", "SC100": "sc100"}
+AA_GOLD, AA_LBES, AA_CASE = "aa_mauc1_daily.csv", "aa_liquid_lbes.csv", "aa_liquid_case.csv"
+AA_GOLD_START = "2005-01-01"   # rule H8 (F-RA-D18): MCX gold from the first day the research Postgres (the review's second source) covers
+
+
+def _level(dates, values) -> pd.DataFrame:
+    """A cash level as daily bars: open = high = low = close = the level, so the fill is the level."""
+    s = pd.DataFrame({"date": pd.DatetimeIndex(dates), "close": pd.Series(values).to_numpy(float)}); s["open"] = s["high"] = s["low"] = s["close"]
+    return _clean(s[["date", "open", "high", "low", "close"]])
+
+
+def load_india_latest() -> dict:
+    """The desk's latest Indian series, copied from its asset-allocation repository (wm-AA; DATA_REVIEW_AA.md):
+      N100, MC100, SC100 — daily bars to 2026-11-20, equal to load_daily()'s on every common day; rules H1–H3;
+      GOLD — MCX gold (MAUc1) from 2005-01-01 to 2026-11-20: rules H7 (a row with a non-positive close is dropped) and H8
+        (from 2005-01-01), F-RA-D18; then H1–H3;
+      'Liquid' — wm-AA's liquid-ETF cash leg (LBES) and 'LiquidCase' — the LIQUIDCASE level (the fund's traded close from
+        2024-01-24), both to 2026-11-25, as single daily prices (open = high = low = close). Before 2024-01-24 the two are one
+        series with no recorded source (F-RA-D17): every study that uses them must say so.
+    No Micro250 (wm-AA has no newer file). load_daily() is unchanged, so the locked tests keep their inputs.
+    dict name -> DataFrame(date index; open, high, low, close, fill, stale_ohl)."""
+    out = {}
+    for name, k in AA_INDEX.items():
+        a = pd.read_csv(open_approved(f"aa_index_{k}_pre2019.csv"), parse_dates=["date"]); b = pd.read_csv(open_approved(f"aa_index_{k}_2019_2026.csv"), parse_dates=["date"])
+        out[name] = _clean(pd.concat([a[a["date"] < "2019-01-01"], b])[["date", "open", "high", "low", "close"]])
+    g = pd.read_csv(open_approved(AA_GOLD), parse_dates=["date"])
+    out[GOLD] = _clean(g[(g["date"] >= AA_GOLD_START) & (g["close"] > 0)][["date", "open", "high", "low", "close"]])   # rules H8 and H7
+    lb = pd.read_csv(open_approved(AA_LBES)); out["Liquid"] = _level(pd.to_datetime(lb["date"], format="%d/%m/%y %H:%M"), lb["price"])
+    lc = pd.read_csv(open_approved(AA_CASE)); out["LiquidCase"] = _level(pd.to_datetime(lc["date"], format="%d-%m-%Y"), lc["liquid_case"])
+    return out
+
+
 def fingerprints() -> dict:
     return {f: _sha256(os.path.join(DATA, f)) for f in _approved()}
