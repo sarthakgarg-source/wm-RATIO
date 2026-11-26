@@ -1,0 +1,214 @@
+{
+ "run_date": "2026-11-26",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227",
+  "us_etf_ohlcv.csv": "84729a36edc18c343c4d1768cec41c577d0ff5850265e2f3aabdb1e841904e85",
+  "us_etf_dividends.csv": "04392d6ff812359e1f2acbf89efd038dc81565315f340bc471cdc9615d0251e1",
+  "us_gold_ohlcv.csv": "75fa5f1bc47c0df7bf0f95b21c2d744d85c72fb7f039990d0dca1517fa4d3b92",
+  "us_small_ohlcv.csv": "726cb635d29845fe1645db33ae1c2ef3b85bd47332d2e9f55e1bdba0fb02a09d",
+  "us_small_dividends.csv": "332d0ae744bc2c815757ad742e1018efa4067015fe96c580ec64ef39ecbc3db3",
+  "us_factor_ohlcv.csv": "9156e69c99dacc81b32df98bdebd8b1211edf681d4d4b512110971dc04b27a5e",
+  "us_factor_dividends.csv": "d19722ff9d822e21429cdccf3ea3ffbb150b852d24382f81dcec804c96f6f684",
+  "us_factor_splits.csv": "8f2efbe210d45f1217593a4c0d3ee4725c86bfdfc24f106935c772b2de7cb8c4",
+  "us_sp_factor_ohlcv.csv": "ae51bf2de5aeac12947bac8d1570d248673732ba0345cba0789b17e5be39a792",
+  "us_sp_factor_dividends.csv": "5581388c1d149a5bc53a8e4dc1fb27a2b7e2cca66734b050584c0ef88635c8ce",
+  "us_sp_factor_splits.csv": "9353e39fe02edb88b4ccb4334e951fa25c0908a7a3e88dd6f941ff55d71edae8"
+ },
+ "draws_per_pair_null": 500,
+ "cost_bps_round_trip": 20.8,
+ "common_start_decision_week": 53,
+ "seeds": "Rule R N-A: default_rng([0, E10 pair id, 0, draw]) (E10's); Rule RS N-S: default_rng([0, E10 pair id, 5, draw]); E10 pair ids PDBC 3, COM 6, SDCI 8",
+ "ohlcv": "ohlcv_eikon_us holds no open/high/low for SPY, PDBC, SDCI, COM before 2026 (22% of 2026 rows); us_ohlcv_eodhd holds OHLCV for SPY and PDBC to 2026-07-31, none for SDCI or COM; so every supertrend is on weekly bars from closes",
+ "checks": {
+  "close_max_abs_diff": 0.0,
+  "band_vs_z_max_abs_diff": 0.0,
+  "engine_book_max_abs_diff": 0.0,
+  "benchmarks_vs_engine_max_abs_diff": 0.0,
+  "e10_cagr_max_abs_diff": 0.0,
+  "e10_switch_mismatch": 0,
+  "e10_pct_max_abs_diff": 0.0,
+  "e10_missing": [],
+  "null_draws": 3000,
+  "null_count_mismatch": 0,
+  "st_missing_after_start": 0,
+  "mom_missing_after_start": 0,
+  "cut_checks": 8,
+  "cut_violations": [],
+  "weights_row_sum_max_dev": 0.0,
+  "roll_equivalence_failures": 0,
+  "shift_count_checks": 257,
+  "shift_count_mismatch": 0
+ },
+ "book": {
+  "first": "2020-12-31",
+  "last": "2026-11-18",
+  "shifts": 257,
+  "shift_range_weeks": [
+   26,
+   282
+  ],
+  "benchmarks": {
+   "neutral": {
+    "cagr": 0.149658,
+    "maxdd": -0.153564,
+    "vol": 0.120796
+   },
+   "equal": {
+    "cagr": 0.155417,
+    "maxdd": -0.166276,
+    "vol": 0.129609
+   },
+   "SPY": {
+    "cagr": 0.137698,
+    "maxdd": -0.244963,
+    "vol": 0.166636
+   },
+   "PDBC": {
+    "cagr": 0.150348,
+    "maxdd": -0.27633,
+    "vol": 0.193329
+   },
+   "SDCI": {
+    "cagr": 0.216528,
+    "maxdd": -0.185473,
+    "vol": 0.181219
+   },
+   "COM": {
+    "cagr": 0.102329,
+    "maxdd": -0.14022,
+    "vol": 0.098335
+   }
+  },
+  "ahead_of_neutral": 1,
+  "ahead_of_spy": 6,
+  "ahead_of_equal": 1,
+  "pct_T_high": 0,
+  "pct_T_low": 0,
+  "sync": {
+   "weeks": 308,
+   "first": "2020-12-31",
+   "last": "2026-11-18",
+   "buy": {
+    "SPY": 0.694805,
+    "PDBC": 0.646104,
+    "SDCI": 0.633117,
+    "COM": 0.587662
+   },
+   "rel_buy": {
+    "PDBC": 0.444805,
+    "SDCI": 0.454545,
+    "COM": 0.474026
+   },
+   "cm_all_agree": 0.659091,
+   "cm_buy_count": [
+    0.214286,
+    0.149351,
+    0.191558,
+    0.444805
+   ],
+   "patterns": {
+    "SPY BUY \u00b7 PDBC BUY \u00b7 SDCI BUY \u00b7 COM BUY": 0.314935,
+    "SPY SELL \u00b7 PDBC BUY \u00b7 SDCI BUY \u00b7 COM BUY": 0.12987,
+    "SPY BUY \u00b7 PDBC SELL \u00b7 SDCI SELL \u00b7 COM SELL": 0.11039,
+    "SPY SELL \u00b7 PDBC SELL \u00b7 SDCI SELL \u00b7 COM SELL": 0.103896,
+    "SPY BUY \u00b7 PDBC BUY \u00b7 SDCI BUY \u00b7 COM SELL": 0.100649,
+    "SPY BUY \u00b7 PDBC SELL \u00b7 SDCI SELL \u00b7 COM BUY": 0.064935,
+    "SPY BUY \u00b7 PDBC BUY \u00b7 SDCI SELL \u00b7 COM SELL": 0.038961,
+    "SPY BUY \u00b7 PDBC SELL \u00b7 SDCI BUY \u00b7 COM BUY": 0.032468
+   },
+   "corr": [
+    [
+     1.0,
+     0.165905,
+     0.181807,
+     0.151684
+    ],
+    [
+     0.165905,
+     1.0,
+     0.90098,
+     0.74606
+    ],
+    [
+     0.181807,
+     0.90098,
+     1.0,
+     0.737194
+    ],
+    [
+     0.151684,
+     0.74606,
+     0.737194,
+     1.0
+    ]
+   ],
+   "rr_share": {
+    "PDBC": {
+     "A": 0.470779,
+     "B": 0.373377,
+     "N": 0.155844
+    },
+    "SDCI": {
+     "A": 0.295455,
+     "B": 0.480519,
+     "N": 0.224026
+    },
+    "COM": {
+     "A": 0.487013,
+     "B": 0.24026,
+     "N": 0.272727
+    }
+   }
+  }
+ },
+ "pairs": {
+  "PDBC": {
+   "pair": "PDBC|SPY",
+   "first": "2017-01-06",
+   "last": "2026-11-18",
+   "weeks": 516,
+   "buy_x": 0.583333,
+   "buy_spy": 0.668605,
+   "buy_rel": 0.366279,
+   "rel_flips_yr": 4.359076,
+   "rel_vs_x_minus_spy": 0.738372,
+   "rel_agrees_rule_r": 0.202198,
+   "in_band_weeks": 0.337209,
+   "below_band": 0.49031,
+   "above_band": 0.172481
+  },
+  "COM": {
+   "pair": "COM|SPY",
+   "first": "2020-01-03",
+   "last": "2026-11-18",
+   "weeks": 360,
+   "buy_x": 0.580556,
+   "buy_spy": 0.680556,
+   "buy_rel": 0.469444,
+   "rel_flips_yr": 4.363799,
+   "rel_vs_x_minus_spy": 0.680556,
+   "rel_agrees_rule_r": 0.29368,
+   "in_band_weeks": 0.497222,
+   "below_band": 0.369444,
+   "above_band": 0.133333
+  },
+  "SDCI": {
+   "pair": "SDCI|SPY",
+   "first": "2020-12-31",
+   "last": "2026-11-18",
+   "weeks": 308,
+   "buy_x": 0.633117,
+   "buy_spy": 0.694805,
+   "buy_rel": 0.454545,
+   "rel_flips_yr": 4.421089,
+   "rel_vs_x_minus_spy": 0.701299,
+   "rel_agrees_rule_r": 0.288703,
+   "in_band_weeks": 0.50974,
+   "below_band": 0.204545,
+   "above_band": 0.285714
+  }
+ },
+ "seconds": 11
+}

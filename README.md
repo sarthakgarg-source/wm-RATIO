@@ -103,6 +103,11 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              or by a momentum pick (12-1, 12, 6 months); gate-and-rank and momentum-only rotations; E10's SC100 + gold and
              IJR + GLD rules as references; PDBC as a check on the US commodity; all always invested, against every shift
              of the signals in time (2026-11-25)
+             E12_cmdty_rotation/ (E12.md design; cmdty.py → out/E12_cmdty.html, E12_results.md, CSVs) — SPY with PDBC, SDCI and
+             COM (total return; supertrends on weekly bars from closes, since the research database holds no open/high/low for
+             these funds before 2026): each pair's ±1 sd band (Rule R) and 50/50, the desk's supertrend on each fund and on each
+             ETF ÷ SPY (relative, Rule RS), and a four-asset rotation book (absolute and relative supertrend, momentum, gate and
+             rank, Rule R sleeves) against every shift of the signals in time (2026-11-26)
              E06_trade_search/ (E06.md design; search.py → out/E06_trades.html, E06_results.md, CSVs) — SEARCH: every
              trade of the rule on all z windows with 24 conditions at entry; condition by condition; 7,211 rules found on
              2006–2015 and checked on 2016–2026 and the gold pairs, against searches on shuffled outcomes; year by year and
