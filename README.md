@@ -97,6 +97,12 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              check) on each leg with four weight schemes for the four buy/sell combinations; relative momentum (12-1, 12,
              6 months); all beside Rule R on the US pairs (nine commodity ETFs and GLD against SPY, IJR against SPY and
              GLD) and the Indian pairs (N100, MC100, SC100, gold), against the same spells in a random order (2026-11-23)
+             E11_multi_asset/ (E11.md design; multi.py → out/E11_multi.html, E11_results.md, CSVs) — multi-asset books, India
+             (N100, MC100, SC100, gold) and the US (SPY, IJR, GCC, GLD) kept apart: how in sync their supertrends are; the
+             desk's supertrend decides which asset classes are on, a class's money spread equally, by breadth, with a tilt
+             or by a momentum pick (12-1, 12, 6 months); gate-and-rank and momentum-only rotations; E10's SC100 + gold and
+             IJR + GLD rules as references; PDBC as a check on the US commodity; all always invested, against every shift
+             of the signals in time (2026-11-25)
              E06_trade_search/ (E06.md design; search.py → out/E06_trades.html, E06_results.md, CSVs) — SEARCH: every
              trade of the rule on all z windows with 24 conditions at entry; condition by condition; 7,211 rules found on
              2006–2015 and checked on 2016–2026 and the gold pairs, against searches on shuffled outcomes; year by year and
