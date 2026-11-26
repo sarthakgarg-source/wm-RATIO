@@ -143,12 +143,13 @@ US_SMALL_PRICES, US_SMALL_DIVIDENDS = "us_small_ohlcv.csv", "us_small_dividends.
 SPLITS = {"IJR": (("2017-01-19", 2.0),)}   # rule H6: measured in DATA_REVIEW_US_SMALL.md from the second source's raw closes
 
 
-def split_adjust_dividends(dv: pd.DataFrame, ticker: str) -> pd.DataFrame:
+def split_adjust_dividends(dv: pd.DataFrame, ticker: str, splits: dict = None) -> pd.DataFrame:
     """Rule H6 (IJR): the price file is split-adjusted (its closes are the second source's raw closes divided by the split
     ratio before each split) but the distribution table holds the amounts as paid, so a distribution whose ex-date is
-    before a split is divided by that split's ratio. IJR: 2-for-1 on 2017-01-19."""
+    before a split is divided by that split's ratio. IJR: 2-for-1 on 2017-01-19. `splits` (ticker -> ((date, ratio), ...))
+    replaces the IJR table SPLITS when given (the factor ETFs: factor_splits())."""
     dv = dv.copy()
-    for d, k in SPLITS.get(ticker, ()):
+    for d, k in (SPLITS if splits is None else splits).get(ticker, ()):
         dv.loc[dv["ex_date"] < pd.Timestamp(d), "gross"] = dv.loc[dv["ex_date"] < pd.Timestamp(d), "gross"] / k
     return dv
 
@@ -162,6 +163,46 @@ def load_us_small() -> dict:
         g = g.dropna(subset=["close"]).drop_duplicates("date")
         s = g[g["date"] >= us_start(g["date"].min())][["date", "open", "high", "low", "close"]].sort_values("date")
         out[t] = _clean(total_return(s, split_adjust_dividends(dv[dv["ticker"] == t], t)))
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------- US factor and style ETFs (added 2026-11-26)
+US_FACTOR_BATCHES = (("us_factor_ohlcv.csv", "us_factor_dividends.csv", "us_factor_splits.csv"),           # DATA_REVIEW_US_FACTOR.md
+                     ("us_sp_factor_ohlcv.csv", "us_sp_factor_dividends.csv", "us_sp_factor_splits.csv"))  # DATA_REVIEW_US_SP_FACTOR.md
+US_FACTOR_START = {"SPMO": "2018-01-01"}   # F-RA-D16: SPMO traded thinly until 2018 — a per-fund override of rule H5
+
+
+def factor_splits() -> dict:
+    """Rule H6's splits for the factor ETFs, from the approved splits files (F-RA-D15): ticker -> ((ex-date, new shares ÷ old
+    shares), ...). MTUM, QUAL and IWF 4-for-1, NOBL 2-for-1, all in 2026; none for SPMO, SPHQ and RPV."""
+    out = {}
+    for _, _, f in US_FACTOR_BATCHES:
+        sp = pd.read_csv(open_approved(f), parse_dates=["ex_date"])
+        sp = sp[(sp["event_type"] == "Share Split") & (sp["event_status"] == "Approved") & (sp["is_rescinded"].astype(str) != "True")]
+        for t, s in sp.groupby("ticker"):
+            out[t] = out.get(t, ()) + tuple((r.ex_date.strftime("%Y-%m-%d"), r.new_shares / r.old_shares) for r in s.itertuples())
+    return out
+
+
+def load_us_factor() -> dict:
+    """The US factor and style ETFs, from two reviews:
+      DATA_REVIEW_US_FACTOR.md — MTUM (MSCI momentum), QUAL (MSCI quality), VLUE (MSCI enhanced value), USMV (MSCI min vol),
+        SPLV (S&P 500 low volatility), NOBL (S&P 500 dividend aristocrats), RSP (S&P 500 equal weight), IWF (Russell 1000 growth);
+      DATA_REVIEW_US_SP_FACTOR.md — SPMO (S&P 500 momentum), SPHQ (S&P 500 quality), RPV (S&P 500 pure value, standing in for
+        SPVU, S&P 500 enhanced value, which the research database does not hold).
+    Each fund starts under rule H5 (SPMO on 2018-01-01: F-RA-D16), distributions are put on the price file's split basis (rule
+    H6, splits from factor_splits()), total return (H4), then H1–H3 as load_us_etf(). MTUM and QUAL have open, high and low on
+    every row, so their fill is OHLC4; the others have closes only (fill = close, rule H3). A study comparing them should fill
+    every fund at the close. SPHQ changed index on 2016-03-21 (DATA_REVIEW_US_SP_FACTOR.md).
+    dict ticker -> DataFrame(date index; open, high, low, close, fill, stale_ohl). US dollars."""
+    spl = factor_splits(); out = {}
+    for fp, fd, _ in US_FACTOR_BATCHES:
+        raw = pd.read_csv(open_approved(fp), parse_dates=["date"]); dv = pd.read_csv(open_approved(fd), parse_dates=["ex_date"])
+        for t, g in raw.groupby("ticker"):
+            g = g.dropna(subset=["close"]).drop_duplicates("date")
+            st = max(us_start(g["date"].min()), pd.Timestamp(US_FACTOR_START.get(t, US_START)))
+            s = g[g["date"] >= st][["date", "open", "high", "low", "close"]].sort_values("date")
+            out[t] = _clean(total_return(s, split_adjust_dividends(dv[dv["ticker"] == t], t, spl)))
     return out
 
 

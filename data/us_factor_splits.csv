@@ -1,0 +1,5 @@
+ticker,ex_date,effective_date,event_type,old_shares,new_shares,adjustment_factor,event_status,is_rescinded
+IWF,2026-04-27,2026-04-28,Share Split,1.0,4.0,0.25,Approved,False
+MTUM,2026-11-03,2026-11-04,Share Split,1.0,4.0,0.25,Approved,False
+NOBL,2026-05-26,2026-05-27,Share Split,1.0,2.0,0.5,Approved,False
+QUAL,2026-11-03,2026-11-04,Share Split,1.0,4.0,0.25,Approved,False

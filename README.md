@@ -19,7 +19,7 @@ as a second exit, at the opposite band); **no maximum hold**.
 6. An independent verifier that imports nothing from the engine must agree, and must fail on a corrupted copy.
 7. If any gate fails, stop: read nothing, fix it, rerun into a new evidence folder.
 8. No person's name anywhere in the repo — code, comments, docs, commits (write "the review of <date>", "the desk").
-9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S06, M02, D14 (+ 2 open).
+9. Finding IDs: `F-RA-S##` (strategy), `F-RA-M##` (method), `F-RA-D##` (data). **Counter:** S06, M02, D16 (+ 2 open).
 
 **Current tests:** T02 and T03 are the same rule under two numbers (the desk's choice of 2026-11-17): T02 judged at the
 95th percentile, T03 at the 98th. On 2026-11-17 the earlier log-ratio test and the time limit on each trade were removed
@@ -36,7 +36,12 @@ data/        raw files (read-only), data_review.py → DATA_REVIEW.md, APPROVED_
              2026-11-20): fetch_us_gold.py, data_review_us_gold.py → DATA_REVIEW_US_GOLD.md, read through
              approved_data.load_us_gold() (rules H3, H5; no distributions); US small-cap ETF (IJR, approved 2026-11-23):
              fetch_us_small.py, data_review_us_small.py → DATA_REVIEW_US_SMALL.md (F-RA-D14), read through
-             approved_data.load_us_small() (rules H3–H5 and H6: pre-split distributions put on the price file's split basis)
+             approved_data.load_us_small() (rules H3–H5 and H6: pre-split distributions put on the price file's split basis);
+             US factor and style ETFs (MTUM, QUAL, VLUE, USMV, SPLV, NOBL, RSP, IWF; approved 2026-11-26): fetch_us_factor.py,
+             data_review_us_factor.py → DATA_REVIEW_US_FACTOR.md (F-RA-D15: four 2026 splits), read through
+             approved_data.load_us_factor() (rules H3–H6; the splits from us_factor_splits.csv); US S&P 500 factor ETFs
+             (SPMO, SPHQ, RPV standing in for SPVU; approved 2026-11-26): fetch_us_sp_factor.py, data_review_us_sp_factor.py →
+             DATA_REVIEW_US_SP_FACTOR.md (F-RA-D16: SPMO from 2018-01-01), read through the same load_us_factor()
 analysis/    approved_data.py (the boundary), ratio_engine.py (engine + nulls), verify_ratio.py (independent checker)
 tests/T02/   PLAN.md, T02.md (§1–3 locked), TRACKER.md, run.sh, check_prereg.py, analyse.py, fill_writeup.py, report.py,
              check_page.py, T02_results.html, evidence/<run>/
