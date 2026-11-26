@@ -8,6 +8,11 @@ Design: explore/E10_trend_rotation/E10.md (written before the first run).
 
 Every number on the page and in E10_results.md is computed here; the page's script only picks the numbers of the chosen
 controls from the embedded results and draws them. Not a finding and not a test of any rule.
+
+Re-run on 2026-11-26 on the latest data (explore/E01_ratio_cycles/latest.py; E10.md, the block of that date): the Indian
+pairs on N100, MC100, SC100 and MCX gold from load_india_latest() to 2026-11-20, from 2011-01-01. On the Indian gold pairs
+every rule holds the liquid ETF instead of gold in a week whose decision falls in gold's weekly supertrend SELL, and the
+liquid ETF replaces cash (as E13's switch). The US pairs are unchanged (the engine's own start).
 """
 import argparse
 import html
@@ -23,11 +28,13 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE)); OUT = os.path.join(HERE, "out")
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_ratio_cycles"))
-from analysis.approved_data import GOLD, fingerprints, load_daily, load_us_etf, load_us_gold, load_us_small  # noqa: E402
+from analysis.approved_data import GOLD, fingerprints, load_us_etf, load_us_gold, load_us_small  # noqa: E402
+import analysis.ratio_engine as RE  # noqa: E402  (its pair start, set per market)
 from analysis.ratio_engine import PIT, book, comparators, counts, decide, null_A, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (page styling, percentile, notable)
 import zwin as ZW  # noqa: E402  (z of a series)
 import variants as VR  # noqa: E402  (Rule R's states, the T03 check)
+import latest as LT  # noqa: E402  (the latest Indian data and the gold → liquid switch)
 
 COST = VR.COST; C = COST / 2 / 1e4; LO, HI = E1.LO, E1.HI
 US_MAIN = ["GCC", "FTGC", "COMT", "PDBC", "BCI", "BCD", "COM", "CMDY", "SDCI"]
@@ -49,7 +56,7 @@ RLAB = {"R52": "Rule R (±1 sd, 52 weeks)", **{m[0]: m[1] for m in MOM}, **{k: "
 RSHORT = {"R52": "Rule R", "m12_1": "Mom 12-1", "m12": "Mom 12", "m6": "Mom 6", "S1": "ST S1", "S2": "ST S2", "S3": "ST S3", "S4": "ST S4"}
 RULE_ID = {"R52": 0, "m12_1": 1, "m12": 2, "m6": 3, "ST": 4}
 TW = {"A": (1.0, 0.0, 0.0), "B": (0.0, 1.0, 0.0), "N": (0.5, 0.5, 0.0)}
-SIM_START, SIM_END = pd.Timestamp("2015-01-12"), pd.Timestamp("2026-08-28")
+SIM_START, SIM_END = pd.Timestamp("2011-01-01"), pd.Timestamp("2026-11-20")   # the latest data: gold from 2011, India to 2026-11-20 (were 2015-01-12, 2026-08-28)
 
 
 def leg(x): return "gold" if x == GOLD else x
@@ -105,6 +112,25 @@ def gbook(A: dict, k_dec: np.ndarray, W: np.ndarray, rec: bool = False):
     nav = np.empty(n - k0); nav[0] = 1.0; bounds = starts + [n]
     for j, u in enumerate(U):
         s, e = bounds[j], bounds[j + 1]; nav[s - k0:e - k0] = u[0] * ca[s:e] + u[1] * cb[s:e] + u[2]
+    return nav, sw
+
+
+def switch_w(W: np.ndarray, sell: np.ndarray) -> np.ndarray:
+    """The switch on an Indian gold pair (the latest data): the third column is the liquid ETF, which replaces cash, and in a
+    week whose decision falls in gold's weekly supertrend SELL, gold's weight (the second column) moves to it."""
+    W3 = np.array(W, float, copy=True); sm = np.asarray(sell, bool)
+    W3[sm, 2] += W3[sm, 1]; W3[sm, 1] = 0.0
+    return W3
+
+
+def gbook3(cl3: np.ndarray, fi3: np.ndarray, k_dec: np.ndarray, W3: np.ndarray, sell0: bool, rec: bool = False):
+    """gbook with the liquid ETF as a third holding, bought and sold at its level like the legs (10.4 bps per side, so
+    V' = V - c Σ|w_i V' - v_i|: explore/E01_ratio_cycles/variants.wbook). The start is gbook's 50/50, with gold's half in
+    the liquid ETF if gold is SELL at the first decision (as variants.book3)."""
+    w0 = np.array([0.5, 0.0, 0.5]) if sell0 else np.array([0.5, 0.5, 0.0])
+    nav, sw = VR.wbook(cl3, fi3, k_dec, W3, w0, rec=rec)
+    for x in sw:
+        x["fill_a"], x["fill_b"], x["fill_liquid"] = fi3[x["k"], 0], fi3[x["k"], 1], fi3[x["k"], 2]
     return nav, sw
 
 
@@ -312,19 +338,27 @@ def similarity(pf_in: pd.DataFrame, pf_us: pd.DataFrame, series: bool = False, u
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--draws", type=int, default=500); ND = ap.parse_args().draws
     t0 = time.time(); os.makedirs(OUT, exist_ok=True)
-    pin = load_daily(); pus = load_us_etf(); pus.update(load_us_gold()); pus.update(load_us_small())
-    checks = {"close_max_abs_diff": 0.0, "engine_book_max_abs_diff": 0.0, "engine_book_runs": 0, "benchmarks_vs_engine_max_abs_diff": 0.0, "weekly_bar_index_mismatch": [],
+    pin = LT.load_india(); pus = load_us_etf(); pus.update(load_us_gold()); pus.update(load_us_small())
+    START0 = dict(RE.START); SWI = LT.activate(pin); START_IN = dict(RE.START)   # the US pairs keep the engine's own start
+    checks = {"close_max_abs_diff": 0.0, "engine_book_max_abs_diff": 0.0, "engine_book_runs": 0, "switch_book_vs_book3_max_abs_diff": 0.0, "switch_book_runs": 0, "benchmarks_vs_engine_max_abs_diff": 0.0, "weekly_bar_index_mismatch": [],
               "t03_mismatch": [], "cut_checks": 0, "cut_violations": [], "null_draws": 0, "null_count_mismatch": 0, "st_null_combo_weeks_changed": 0, "band_vs_z_mismatch": 0, "engine_vs_z_state_mismatch": 0, "st_missing_after_start": 0}
     LEGACY = []
     PAIRS, STRAT, CURV, RR, STL, STS, TOUCH, SW = [], [], {}, {}, {}, {}, [], []
     PF = {}
     for mk, mid, pairs in MARKETS:
-        px = pus if mk == "us" else pin
+        px = pus if mk == "us" else pin; RE.START.update(START0 if mk == "us" else START_IN)
         for pid, pair in enumerate(pairs):
             a, b = pair.split("|"); pf = pair_frame(px, pair, "plain"); PF[pair] = pf
             checks["close_max_abs_diff"] = max(checks["close_max_abs_diff"], float((pf["ca"] - px[a]["close"].reindex(pf.index)).abs().max()), float((pf["cb"] - px[b]["close"].reindex(pf.index)).abs().max()))
             dec = pf.index[pf["decision"]]; kd = pf.index.get_indexer(dec[K0:]); days = pf.index[kd[0]:]; dd_ = (days[-1] - days[0]).days
             A = {k: pf[k].to_numpy() for k in ("ca", "cb", "fa", "fb")}; wk = pf.loc[dec]
+            # the switch (Indian gold pairs): the liquid ETF as the third holding, replacing cash; gold's weight moves to it on gold's SELL weeks
+            swp = mk == "india" and VR.SWITCH.is_gold_pair(pf); sell_k = liq = CL3 = FI3 = None
+            if swp:
+                sell_k = SWI.sell_at(dec[K0:]); liq = SWI.liquid_on(pf.index)
+                CL3 = np.column_stack([A["ca"], A["cb"], liq]); FI3 = np.column_stack([A["fa"], A["fb"], liq])
+            def BK(W, rec=False):
+                return gbook3(CL3, FI3, kd, switch_w(W, sell_k), bool(sell_k[0]), rec) if swp else gbook(A, kd, W, rec)
             # the signals on every decision week of the pair
             z = VR.z_at_decisions(pf, "w52"); sR = np.array(VR.rule_states(z.to_numpy())[0], dtype=object)
             sM = {m[0]: mom_states(wk["ca"].to_numpy(), wk["cb"].to_numpy(), m[2], m[3]) for m in MOM}
@@ -343,7 +377,7 @@ def main():
                     bx_ = desk_bars(px[x], True); cc[x] = leg_state_at(dec, bx_, desk_supertrend(bx_)[0], LEG[x][3]) == 1
                 ca_, cb_ = cc[a], cc[b]
                 agree = {"a": float((ca_[K0:] == ba[K0:]).mean()), "b": float((cb_[K0:] == bb[K0:]).mean())}
-                Wc = SCHEMES["S1"][combo_of(ca_, cb_)[K0:]]; nvc, _ = gbook(A, kd, Wc); agree["S1_cagr_closes"] = nstats(nvc, days)["cagr"]
+                Wc = SCHEMES["S1"][combo_of(ca_, cb_)[K0:]]; nvc, _ = BK(Wc); agree["S1_cagr_closes"] = nstats(nvc, days)["cagr"]
             # check: the first run's (10, 3) Wilder supertrend on the pair's common-calendar weekly bars
             hl = (lambda x, col: px[x][col].reindex(pf.index).to_numpy()) if mk == "india" else (lambda x, col: pf["ca" if x == a else "cb"].to_numpy())
             bars = weekly_bars(pf, hl(a, "high"), hl(a, "low"), hl(b, "high"), hl(b, "low"))
@@ -381,9 +415,15 @@ def main():
             # the real runs
             real = {}
             for r_ in RULES:
-                nav, sw = gbook(A, kd, Wr[r_], rec=True); real[r_] = (nav, sw)
+                nav, sw = BK(Wr[r_], rec=True); real[r_] = (nav, sw)
                 if r_ in ("R52", "m12_1", "m12", "m6"):
                     tg = [{(1.0, 0.0, 0.0): "A", (0.0, 1.0, 0.0): "B", (0.5, 0.5, 0.0): "N"}[tuple(x)] for x in Wr[r_]]
+                    if swp:   # the switched book against variants.book3 (the same switch, written separately), and gbook against the engine with the switch off
+                        n3, _, ex3, _ = VR.book3(pf, dec[K0:], tg, sell_k, liq, COST); checks["switch_book_runs"] += 1
+                        checks["switch_book_vs_book3_max_abs_diff"] = max(checks["switch_book_vs_book3_max_abs_diff"], float(np.nanmax(np.abs(n3.to_numpy() - nav))))
+                        if r_ == "R52":
+                            exR = ex3
+                        nav = gbook(A, kd, Wr[r_])[0]
                     ne, _ = book(pf, dec[K0:], tg, COST, PIT()); checks["engine_book_runs"] += 1
                     checks["engine_book_max_abs_diff"] = max(checks["engine_book_max_abs_diff"], float(np.nanmax(np.abs(ne.to_numpy() - nav))))
             # the nulls through the same book
@@ -391,24 +431,25 @@ def main():
             tR = list(sR[K0:]); baseR = counts(tR)
             for dr in range(ND):
                 rng = np.random.default_rng([mid, pid, RULE_ID["R52"], dr]); tg = null_A(tR, rng); cc = counts(tg); checks["null_draws"] += 1; checks["null_count_mismatch"] += (cc != baseR)
-                c_, m_ = quick(gbook(A, kd, np.array([TW[s] for s in tg], float))[0], dd_); NC["R52"].append(c_); ND_["R52"].append(m_)
+                c_, m_ = quick(BK(np.array([TW[s] for s in tg], float))[0], dd_); NC["R52"].append(c_); ND_["R52"].append(m_)
             for m in MOM:
                 x = (sM[m[0]][K0:] == "A"); base = spell_counts(x)
                 for dr in range(ND):
                     rng = np.random.default_rng([mid, pid, m[4], dr]); y = shuffle_spells(x, rng); checks["null_draws"] += 1; checks["null_count_mismatch"] += (spell_counts(y) != base)
-                    c_, m_ = quick(gbook(A, kd, np.array([TW["A" if v else "B"] for v in y], float))[0], dd_); NC[m[0]].append(c_); ND_[m[0]].append(m_)
+                    c_, m_ = quick(BK(np.array([TW["A" if v else "B"] for v in y], float))[0], dd_); NC[m[0]].append(c_); ND_[m[0]].append(m_)
             xa, xb = ba[K0:], bb[K0:]; base_a, base_b = spell_counts(xa), spell_counts(xb); cmb_real = np.bincount(cmb[K0:], minlength=4)
             for dr in range(ND):
                 rng = np.random.default_rng([mid, pid, RULE_ID["ST"], dr]); ya, yb = shuffle_spells(xa, rng), shuffle_spells(xb, rng); checks["null_draws"] += 1
                 checks["null_count_mismatch"] += (spell_counts(ya) != base_a) or (spell_counts(yb) != base_b)
                 cy = combo_of(ya, yb); checks["st_null_combo_weeks_changed"] += int(not np.array_equal(np.bincount(cy, minlength=4), cmb_real))
                 for s_ in SCHEMES:
-                    c_, m_ = quick(gbook(A, kd, SCHEMES[s_][cy])[0], dd_); NC[s_].append(c_); ND_[s_].append(m_)
+                    c_, m_ = quick(BK(SCHEMES[s_][cy])[0], dd_); NC[s_].append(c_); ND_[s_].append(m_)
             # results
             yrs = dd_ / 365.25; first, last = days[0].date().isoformat(), days[-1].date().isoformat()
-            PAIRS.append({"pair": pair, "market": mk, "label": nice(pair), "a": leg(a), "b": leg(b), "first": first, "last": last, "years": yrs, "pair_first": pf.index[0].date().isoformat()})
+            PAIRS.append({"pair": pair, "market": mk, "label": nice(pair), "a": leg(a), "b": leg(b), "first": first, "last": last, "years": yrs, "pair_first": pf.index[0].date().isoformat(),
+                          "sw": bool(swp), "sell_share": float(np.mean(sell_k)) if swp else None})
             for r_ in RULES:
-                nav, sw = real[r_]; st = nstats(nav, days); W = Wr[r_]
+                nav, sw = real[r_]; st = nstats(nav, days); W = switch_w(Wr[r_], sell_k) if swp else Wr[r_]   # the weights as held (gold pairs: after the switch)
                 STRAT.append({"pair": pair, "market": mk, "rule": r_, "first": first, "last": last, "cagr": st["cagr"], "cagr_5050": st_bh["cagr"], "cagr_a": st_a["cagr"], "cagr_b": st_b["cagr"],
                               "excess": st["cagr"] - st_bh["cagr"], "ex_a": st["cagr"] - st_a["cagr"], "ex_b": st["cagr"] - st_b["cagr"], "vol": st["vol"], "maxdd": st["maxdd"],
                               "maxdd_5050": st_bh["maxdd"], "maxdd_a": st_a["maxdd"], "maxdd_b": st_b["maxdd"], "vol_5050": st_bh["vol"], "switches": len(sw), "switches_yr": len(sw) / yrs,
@@ -421,7 +462,11 @@ def main():
             CURV[pair] = {"t": [d.date().isoformat() for d in wsel], **{r_: [r6(v) for v in real[r_][0][pos_w]] for r_ in RULES},
                           "bh": [r6(v) for v in bh[pos_w]], "a": [r6(v) for v in ha_[pos_w]], "b": [r6(v) for v in hb_[pos_w]]}
             # Rule R's ratio, z and trades (from the pair's first week)
-            ent = []; swR = real["R52"][1]
+            ent = []; swR = [] if swp else real["R52"][1]
+            for e in (exR if swp else []):
+                held_a = e["held"] == "A"; op_ = bool(e["open"])
+                ent.append([int(dec.get_loc(e["entry_decision"])), leg(a) if held_a else leg(b), pd.Timestamp(e["entry_trade"]).date().isoformat(),
+                            None if op_ else pd.Timestamp(e["exit_trade"]).date().isoformat(), None if op_ else round(e["extra"] * 10000)])
             for j, s in enumerate(swR):
                 if s["to"] in ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)):
                     nx = swR[j + 1] if j + 1 < len(swR) else None; held_a = s["to"][0] == 1.0
@@ -436,7 +481,7 @@ def main():
                                    "stop": [r6(v) for v in stopx[m_]], "buy": [int(v == 1) for v in sx[m_]]}
             ra_n, rb_n = np.diff(np.log(wk["ca"].to_numpy()))[K0:], np.diff(np.log(wk["cb"].to_numpy()))[K0:]   # the week after each decision week
             for s_ in SCHEMES:   # check: the first run's (10, 3) supertrend
-                cw = nstats(gbook(A, kd, SCHEMES[s_][cmb_w[K0:]])[0], days)["cagr"]
+                cw = nstats(BK(SCHEMES[s_][cmb_w[K0:]])[0], days)["cagr"]
                 LEGACY.append({"pair": pair, "market": mk, "scheme": s_, "first": first, "last": last, "cagr": cw, "excess": cw - st_bh["cagr"]})
             xa1, xb1 = ba[K0:-1], bb[K0:-1]
             fw = lambda r, x, v: float(r[x == v].mean() * 52) if (x == v).any() else np.nan  # noqa: E731
@@ -458,7 +503,7 @@ def main():
         sys.exit("similarity: the SPY and IJR comparisons are not on the same weeks")
     SER = {**s1_, "eq_us2": s2_["eq_us"], "r_us2": s2_["r_us"], "z_us2": s2_["z_us"], "rc2": s2_["rc"]}
     if (checks["weekly_bar_index_mismatch"] or checks["t03_mismatch"] or checks["cut_violations"] or checks["null_count_mismatch"] or checks["close_max_abs_diff"] > 0
-            or not checks["engine_book_max_abs_diff"] < 1e-9 or not checks["benchmarks_vs_engine_max_abs_diff"] < 1e-12 or checks["band_vs_z_mismatch"] or checks["engine_vs_z_state_mismatch"]
+            or not checks["engine_book_max_abs_diff"] < 1e-9 or not checks["switch_book_vs_book3_max_abs_diff"] < 1e-9 or not checks["switch_book_runs"] or not checks["benchmarks_vs_engine_max_abs_diff"] < 1e-12 or checks["band_vs_z_mismatch"] or checks["engine_vs_z_state_mismatch"]
             or checks["st_missing_after_start"]):
         sys.exit(f"checks FAILED: {checks}")
     SR = pd.DataFrame(STRAT); SR.to_csv(os.path.join(OUT, "strategies.csv"), index=False)
@@ -473,7 +518,9 @@ def main():
                                   "shallower_dd_5050": int((g["maxdd"] > g["maxdd_5050"]).sum()), "pct_high": int((g["pct"] >= HI).sum()), "pct_low": int((g["pct"] <= LO).sum()),
                                   "dd_pct_high": int((g["pct_dd"] >= HI).sum()), "dd_pct_low": int((g["pct_dd"] <= LO).sum())}
     TQ = pd.DataFrame(TOUCH)
-    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "draws_per_null": ND, "seed": "default_rng([market_id (0 US, 1 India), pair_id, rule_id, draw]); rule_id 0 Rule R (N-A), 1-3 momentum 12-1/12/6, 4 supertrend (N-S)",
+    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "data": LT.NOTE, "us_pairs_start": START0,
+             "switch": "Indian gold pairs: the liquid ETF replaces cash, and in a week whose decision falls in gold's weekly supertrend SELL gold's weight moves to it (every rule and every null draw; gold's SELL weeks fixed by the calendar); 50/50 and the legs bought once are not switched",
+             "inputs": fingerprints(), "draws_per_null": ND, "seed": "default_rng([market_id (0 US, 1 India), pair_id, rule_id, draw]); rule_id 0 Rule R (N-A), 1-3 momentum 12-1/12/6, 4 supertrend (N-S)",
              "cost_bps_round_trip": COST, "common_start_decision_week": K0 + 1, "checks": checks, "summary": summ,
              "supertrend": {"rule": "the desk's Weekly LW: W-FRI bars on each leg's own sessions, true range, ATR = linear-weighted mean of the last 5 (1/15..5/15), bands (H+L)/2 ± 2 ATR ratcheted, flips on a close through the band; "
                                     "a bar is usable once its week has ended on the leg's calendar; US legs closes only", "atr": DESK_N, "mult": DESK_M, "check": f"the first run's Wilder ({ST_N}, {ST_M:g}) on the pair's common-calendar bars"},
@@ -496,10 +543,10 @@ def f2(v, d=2): return "—" if v is None or v != v else f"{v:+.{d}f}"
 def write_md(audit, SR, TQ, STS, SIM, PAIRS, LG):
     ck = audit["checks"]; S = audit["summary"]; lab = {p["pair"]: p["label"] for p in PAIRS}
     md = ["# E10 results — small caps against gold beside SPY and IJR against gold; band touches; the desk's weekly supertrend and momentum rotation (EXPLORATORY)\n",
-          f"_Generated by `explore/E10_trend_rotation/rotation.py` on {audit['run_date']} from the approved data (NSE indices and MCX gold to 2026-08-28; US ETFs, GLD and IJR to 2026-11-18). Weekly decisions, next-session fills, 10.4 bps per side; "
+          f"_Generated by `explore/E10_trend_rotation/rotation.py` on {audit['run_date']} from the approved data (India: {LT.NOTE}; US ETFs, GLD and IJR to 2026-11-18, unchanged). Weekly decisions, next-session fills, 10.4 bps per side; "
           f"every rule on a pair starts on the same day (the pair's 53rd decision week). {audit['draws_per_null']} draws per null. Description, not a finding; percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
           f"**Checks:** pair closes equal the loaders' (max difference {ck['close_max_abs_diff']:.1e}); the book equals the engine's book on {ck['engine_book_runs']} Rule R and momentum runs (max NAV difference {ck['engine_book_max_abs_diff']:.1e}); "
-          f"benchmarks equal the engine's comparators (max {ck['benchmarks_vs_engine_max_abs_diff']:.1e}); Rule R (52 weeks) equals T03 on the Indian pairs; z, momentum and supertrend pass the cut-history check ({ck['cut_checks']} cuts, 0 violations); "
+          f"benchmarks equal the engine's comparators (max {ck['benchmarks_vs_engine_max_abs_diff']:.1e}); Rule R (52 weeks) has the engine's decisions on the Indian pairs, gbook equals the engine's book on every pair with the switch off, and the switched book equals variants.book3 on the Indian gold pairs (max {ck['switch_book_vs_book3_max_abs_diff']:.1e}); z, momentum and supertrend pass the cut-history check ({ck['cut_checks']} cuts, 0 violations); "
           f"{ck['null_draws']:,} null draws, every one kept its counts (supertrend: each leg's; the combination's weeks changed in {ck['st_null_combo_weeks_changed']:,} draws, as expected).\n",
           "## 1. Indian equity ÷ gold against US equity ÷ gold (SPY ÷ GLD, IJR ÷ GLD), on the same weeks\n",
           "| India against US | weeks (India dates) | weekly change correlation | 4-week change correlation | z correlation | z same side | weeks either beyond ±1 / both beyond the same way | Rule R holds the same kind | legs: equity / gold correlation | CAGR: India equity / MCX gold / US equity / GLD | ratio CAGR: India / US |",
@@ -516,7 +563,7 @@ def write_md(audit, SR, TQ, STS, SIM, PAIRS, LG):
     for mk, _, _ in MARKETS:
         for r in RULES:
             s = S[f"{mk}|{r}"]; md.append(f"| {MKT_LAB[mk]} | {RLAB[r]} | {s['n']} | {s['ahead_5050']} | {s['ahead_both']} | {pp(s['median_excess'])} | {s['shallower_dd_5050']} | {s['pct_high']} / {s['pct_low']} | {s['dd_pct_high']} / {s['dd_pct_low']} |")
-    md += ["\n### Every pair and rule in full\n", "| pair | rule | CAGR | excess over 50/50 / first leg / second leg | volatility | max drawdown (50/50) | switches a year | average weight first / second / cash | CAGR pct | drawdown pct |", "|---|---|---|---|---|---|---|---|---|---|"]
+    md += ["\n### Every pair and rule in full\n", "| pair | rule | CAGR | excess over 50/50 / first leg / second leg | volatility | max drawdown (50/50) | switches a year | average weight first / second / cash (Indian gold pairs: the liquid ETF) | CAGR pct | drawdown pct |", "|---|---|---|---|---|---|---|---|---|---|"]
     for _, r in SR.iterrows():
         md.append(f"| {lab[r['pair']]} | {RLAB[r['rule']]} | {fp(r['cagr'])} | {pp(r['excess'])} / {pp(r['ex_a'])} / {pp(r['ex_b'])} | {pc(r['vol'])} | {fp(r['maxdd'], 0)} ({fp(r['maxdd_5050'], 0)}) | {r['switches_yr']:.1f} | "
                   f"{pc(r['w_a'])} / {pc(r['w_b'])} / {pc(r['w_cash'])} | {pq(r['pct'])} | {pq(r['pct_dd'])} |")
@@ -582,7 +629,7 @@ def write_page(audit, SR, TQ, STS, SIM, PAIRS, CURV, RR, STL, SER):
          "<header class='bar'><div class='bar-inner'><b>E10 · trend and rotation</b><span class='tag'>EXPLORATORY</span>", controls, "<button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>Small caps against gold beside SPY and IJR against gold; band touches; the desk's weekly supertrend and momentum rotation, US and India</h1>",
          f"<p>The desk's notes of 2026-11-23, point by point. Weekly decisions on the last trading day of each ISO week; trades at the next session's fill (OHLC4 for NSE and MCX, the close for US ETFs), 10.4 bps each way; "
-         f"every rule on a pair starts on the same day, the pair's 53rd decision week, at 50/50. US: the nine main commodity ETFs and GLD against SPY, and IJR (US small caps) against SPY and against GLD (total return, to 2026-11-18). India: N100, MC100, SC100 and MCX gold (price indices, to 2026-08-28). "
+         f"every rule on a pair starts on the same day, the pair's 53rd decision week, at 50/50. US: the nine main commodity ETFs and GLD against SPY, and IJR (US small caps) against SPY and against GLD (total return, to 2026-11-18). India: N100, MC100, SC100 and MCX gold on the latest data (price indices, from 2011 to 2026-11-20); on the gold pairs every rule holds the liquid ETF in place of gold in a week whose decision falls in gold's weekly supertrend SELL, and the liquid ETF replaces cash. "
          f"Generated {audit['run_date']}. <b>Description, not a finding</b>: every pair here has been looked at before, so none of this is an unseen test.</p>",
          "<div class='card'>" + key + "</div>",
          "<h2>1 · SC100 ÷ gold beside SPY ÷ GLD and IJR ÷ GLD, on the same weeks</h2><p class='note'>All written as equity ÷ gold. India in rupees (SC100 price index, MCX gold futures), the US in dollars (SPY and IJR total return, GLD). Weekly closes on the weeks both markets trade; value of 1 from the first common week.</p>",
@@ -602,13 +649,13 @@ def write_page(audit, SR, TQ, STS, SIM, PAIRS, CURV, RR, STL, SER):
          "<h2>Method and limits</h2><div class='card'><ul>"
          "<li><b>Data.</b> analysis/approved_data: load_daily() (NSE price indices, MCX gold futures in rupees), load_us_etf() (total return, launch periods dropped, closes only), load_us_gold() (GLD) and load_us_small() (IJR, approved 2026-11-23: total return with its "
          "pre-2017 distributions put on the split-adjusted price basis, rule H6, F-RA-D14). Each pair on its common calendar (analysis/ratio_engine.pair_frame).</li>"
-         "<li><b>Book.</b> One book for every rule: weekly target weights (first leg, second leg, cash), traded at the next session's fills only when the target changes, selling before buying, 10.4 bps per side; cash earns 0 (there is no approved cash series). "
+         "<li><b>Book.</b> One book for every rule: weekly target weights (first leg, second leg, cash), traded at the next session's fills only when the target changes, selling before buying, 10.4 bps per side; cash earns 0 on the US and Indian index pairs. On the Indian gold pairs the third holding is the liquid ETF (approved 2026-11-26; no recorded source before 2024-01-24, F-RA-D17): it replaces cash and holds gold's weight in any week whose decision falls in gold's weekly supertrend SELL, in every rule and every null draw, bought and sold at its level at 10.4 bps per side; 50/50 and each leg bought once are not switched. "
          f"It equals the engine's book on every Rule R and momentum run (max NAV difference {audit['checks']['engine_book_max_abs_diff']:.1e}).</li>"
-         "<li><b>Signals.</b> Rule R from explore/E01_ratio_cycles/variants.rule_states (equals T03 on the Indian pairs); momentum on decision-week closes; the desk's Weekly LW supertrend on each leg's own weekly bars (the first run's (10, 3) Wilder version is kept as a check in out/supertrend_check_10_3.csv). All recomputed on histories cut at 8 dates per pair and found equal "
+         "<li><b>Signals.</b> Rule R from explore/E01_ratio_cycles/variants.rule_states (its decisions equal the engine's on the Indian pairs); momentum on decision-week closes; the desk's Weekly LW supertrend on each leg's own weekly bars (the first run's (10, 3) Wilder version is kept as a check in out/supertrend_check_10_3.csv). All recomputed on histories cut at 8 dates per pair and found equal "
          f"({audit['checks']['cut_checks']} cuts, 0 violations).</li>"
          f"<li><b>Nulls.</b> N-S: each two-state series cut into spells, the spells of each state permuted among that state's positions (switches, spells and weeks kept); supertrend shuffles each leg on its own. Rule R: T03's N-A. {audit['draws_per_null']} draws per pair and rule, "
          "seed default_rng([market_id, pair_id, rule_id, draw]).</li>"
-         "<li><b>Limits.</b> NSE series are price indices (dividends not included), US series total return; cash at 0 understates S1 and S4; one supertrend setting, three momentum lookbacks, nothing tuned; curves on this page are at weekly decision closes (the tables' drawdowns are daily). "
+         "<li><b>Limits.</b> NSE series are price indices (dividends not included), US series total return; cash at 0 understates S1 and S4 on the US and Indian index pairs; the Indian series start in 2011 and the gold leg has an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); one supertrend setting, three momentum lookbacks, nothing tuned; curves on this page are at weekly decision closes (the tables' drawdowns are daily). "
          "Design written before the first run: explore/E10_trend_rotation/E10.md.</li></ul></div>",
          "</main>", f"<script id='e10-data' type='application/json'>{blob}</script>", "<script>" + get_plotlyjs() + "</script>", "<script>" + PAGE_JS + "</script></body></html>"]
     out = os.path.join(OUT, "E10_rotation.html"); open(out, "w", encoding="utf-8").write("\n".join(H))
@@ -695,7 +742,7 @@ function drawST(s){
   const combos=[p.a+' buy, '+p.b+' buy',p.a+' buy, '+p.b+' sell',p.a+' sell, '+p.b+' buy',p.a+' sell, '+p.b+' sell'], share=[Z.both_buy,Z.a_only,Z.b_only,Z.both_sell];
   const w=x=>Math.round(x[0]*100)+' / '+Math.round(x[1]*100)+' / '+Math.round(x[2]*100);
   document.getElementById('t_w').innerHTML=table(['combination','weeks ('+Z.first+' → '+Z.last+')'].concat(Object.keys(D.schemes).map(k=>(k===s.s?'<b>'+D.schlab[k]+'</b>':D.schlab[k]))),
-    combos.map((cb,i)=>[cb,pc(share[i])].concat(Object.keys(D.schemes).map(k=>w(D.schemes[k][i])))))+"<p class='note'>Weights: "+p.a+' / '+p.b+' / cash, in %. Cash earns 0.</p>';
+    combos.map((cb,i)=>[cb,pc(share[i])].concat(Object.keys(D.schemes).map(k=>w(D.schemes[k][i])))))+"<p class='note'>Weights: "+p.a+' / '+p.b+' / '+(p.sw?'the liquid ETF, in %. The liquid ETF replaces cash, and gold\'s weight moves to it in any week gold\'s supertrend is SELL (the switch).':'cash, in %. Cash earns 0.')+'</p>';
   [['g_sta','a',p.a],['g_stb','b',p.b]].forEach(([id,k,nm])=>{const Q=L[k];
     const buyL=Q.stop.map((x,i)=>Q.buy[i]===1?x:null), sellL=Q.stop.map((x,i)=>Q.buy[i]===0?x:null);
     Plotly.react(id,[{x:Q.t,y:Q.c,type:'scatter',mode:'lines',name:nm+' weekly close',line:{color:c.ink2,width:1.3},hovertemplate:'%{x}: %{y:.2f}<extra></extra>'},
@@ -708,9 +755,9 @@ function drawST(s){
   const C=D.curves[s.p], cols={S1:K.s1,S2:K.s2,S3:K.s3,S4:K.s4};
   const lines=Object.keys(D.schemes).map(k=>[k,D.schlab[k],cols[k],k===s.s?2.6:1.5,'solid']).concat([['bh','50/50 bought once',K.bh,1.6,'dash']]);
   Plotly.react('g_steq',lines.map(([k,nm,col,wd,dash])=>({x:C.t,y:C[k],type:'scatter',mode:'lines',name:nm,line:{color:col,width:wd,dash:dash},hovertemplate:nm+': %{y:.3f}<extra></extra>'})),
-    layout(two(p.label+' · weekly supertrend, the four weight schemes · value of 1 · '+span(C.t),'after costs; cash at 0; weekly decision closes; log scale; the chosen scheme thicker'),460,{hovermode:'x unified',xaxis:ax({type:'date'}),yaxis:ax({type:'log',title:{text:'value of 1',font:{color:c.ink2}}})}),CFG);
+    layout(two(p.label+' · weekly supertrend, the four weight schemes · value of 1 · '+span(C.t),(p.sw?'after costs; the liquid ETF in place of cash and of gold on its SELL weeks':'after costs; cash at 0')+'; weekly decision closes; log scale; the chosen scheme thicker'),460,{hovermode:'x unified',xaxis:ax({type:'date'}),yaxis:ax({type:'log',title:{text:'value of 1',font:{color:c.ink2}}})}),CFG);
   const R=D.strat[s.p];
-  document.getElementById('t_steq').innerHTML=table(['scheme','dates','CAGR','excess over 50/50','over '+p.a,'over '+p.b,'volatility','max drawdown','switches a year','average weight '+p.a+' / '+p.b+' / cash','CAGR pct (N-S)','drawdown pct'],
+  document.getElementById('t_steq').innerHTML=table(['scheme','dates','CAGR','excess over 50/50','over '+p.a,'over '+p.b,'volatility','max drawdown','switches a year','average weight '+p.a+' / '+p.b+' / '+(p.sw?'liquid':'cash'),'CAGR pct (N-S)','drawdown pct'],
     Object.keys(D.schemes).map(k=>{const q=R[k];return [(k===s.s?'<b>'+D.schlab[k]+'</b>':D.schlab[k]),p.first+' → '+p.last,fp(q[0]),fpp(q[1]),fpp(q[2]),fpp(q[3]),pc(q[4]),fp(q[5],0),f1(q[6]),pc(q[9])+' / '+pc(q[10])+' / '+pc(q[11]),pq(q[7]),pq(q[8])];})
     .concat([['50/50 bought once',p.first+' → '+p.last,fp(R.R52[12]),'','','','',fp(R.R52[15],0),'','50 / 50 / 0 at the start','','']]));
 }
@@ -736,7 +783,7 @@ function drawCmp(s){
   Plotly.react('g_cdd',lines.map(([k,nm,col,wd,dash])=>({x:C.t,y:ddOf(C[k]),type:'scatter',mode:'lines',name:nm,showlegend:false,line:{color:col,width:wd,dash:dash},hovertemplate:nm+': %{y:.1f}%<extra></extra>'})),
     layout(two('Drawdown from the running peak · weekly closes · '+span(C.t),'the same lines'),300,{hovermode:'x unified',margin:{l:60,r:24,t:70,b:40},xaxis:ax({type:'date'}),yaxis:ax({ticksuffix:'%'})}),CFG);
   document.getElementById('t_cmp').innerHTML="<p class='note' style='margin:4px 0'><b>"+p.label+'</b>, every rule, '+p.first+' → '+p.last+' (50/50 bought once '+fp(R.R52[12])+' a year, '+p.a+' '+fp(R.R52[13])+', '+p.b+' '+fp(R.R52[14])+'):</p>'+
-    table(['rule','CAGR','excess over 50/50','over '+p.a,'over '+p.b,'volatility','max drawdown','switches a year','average weight '+p.a+' / '+p.b+' / cash','CAGR pct','drawdown pct'],
+    table(['rule','CAGR','excess over 50/50','over '+p.a,'over '+p.b,'volatility','max drawdown','switches a year','average weight '+p.a+' / '+p.b+' / '+(p.sw?'liquid':'cash'),'CAGR pct','drawdown pct'],
     D.rules.map(r=>{const q=R[r],b=(r==='R52'||r===s.m||r===s.s);return [(b?'<b>':'')+D.rlab[r]+(b?'</b>':''),fp(q[0]),fpp(q[1]),fpp(q[2]),fpp(q[3]),pc(q[4]),fp(q[5],0),f1(q[6]),pc(q[9])+' / '+pc(q[10])+' / '+pc(q[11]),pq(q[7]),pq(q[8])];}));
 }
 function render(){

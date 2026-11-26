@@ -1,0 +1,454 @@
+{
+ "run_date": "2026-11-25",
+ "status": "EXPLORATORY",
+ "inputs": {
+  "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227",
+  "us_etf_ohlcv.csv": "84729a36edc18c343c4d1768cec41c577d0ff5850265e2f3aabdb1e841904e85",
+  "us_etf_dividends.csv": "04392d6ff812359e1f2acbf89efd038dc81565315f340bc471cdc9615d0251e1",
+  "us_gold_ohlcv.csv": "75fa5f1bc47c0df7bf0f95b21c2d744d85c72fb7f039990d0dca1517fa4d3b92",
+  "us_small_ohlcv.csv": "726cb635d29845fe1645db33ae1c2ef3b85bd47332d2e9f55e1bdba0fb02a09d",
+  "us_small_dividends.csv": "332d0ae744bc2c815757ad742e1018efa4067015fe96c580ec64ef39ecbc3db3"
+ },
+ "cost_bps_round_trip": 20.8,
+ "common_start_decision_week": 53,
+ "books": {
+  "india": {
+   "label": "India",
+   "assets": [
+    "N100",
+    "MC100",
+    "SC100",
+    "GoldMCX"
+   ],
+   "classes": [
+    [
+     "equity",
+     [
+      "N100",
+      "MC100",
+      "SC100"
+     ],
+     0.5
+    ],
+    [
+     "gold",
+     [
+      "GoldMCX"
+     ],
+     0.5
+    ]
+   ],
+   "first": "2016-01-15",
+   "last": "2026-08-28",
+   "shifts": 504,
+   "shift_range_weeks": [
+    26,
+    529
+   ],
+   "checks": {
+    "close_max_abs_diff": 0.0,
+    "calendar_equals_ref_pair": true,
+    "engine_book_max_abs_diff": 0.0,
+    "ref_vs_e10_cagr_diff": 0.0,
+    "st_missing_after_start": 0,
+    "mom_missing_after_start": 0,
+    "weights_row_sum_max_dev": 0.0,
+    "roll_equivalence_failures": 0,
+    "cut_checks": 8,
+    "cut_violations": [],
+    "shift_count_checks": 504,
+    "shift_count_mismatch": 0
+   },
+   "benchmarks": {
+    "neutral": {
+     "cagr": 0.16611,
+     "maxdd": -0.208752,
+     "vol": 0.119957
+    },
+    "equal": {
+     "cagr": 0.156245,
+     "maxdd": -0.341764,
+     "vol": 0.139402
+    },
+    "N100": {
+     "cagr": 0.121298,
+     "maxdd": -0.381043,
+     "vol": 0.161967
+    },
+    "MC100": {
+     "cagr": 0.168421,
+     "maxdd": -0.494253,
+     "vol": 0.188952
+    },
+    "SC100": {
+     "cagr": 0.142073,
+     "maxdd": -0.651404,
+     "vol": 0.210758
+    },
+    "gold": {
+     "cagr": 0.18372,
+     "maxdd": -0.214379,
+     "vol": 0.153789
+    }
+   },
+   "n_strategies": 12,
+   "ahead_of_neutral": 11,
+   "ahead_of_equal": 12,
+   "ahead_of_best_asset": 11,
+   "pct_T_high": 4,
+   "pct_T_low": 0,
+   "pct_P_high": 0,
+   "pct_P_low": 0,
+   "sync": {
+    "weeks": 555,
+    "first": "2016-01-15",
+    "last": "2026-08-28",
+    "equity_members": [
+     "N100",
+     "MC100",
+     "SC100"
+    ],
+    "others": [
+     "gold"
+    ],
+    "breadth": [
+     0.299099,
+     0.091892,
+     0.117117,
+     0.491892
+    ],
+    "all_agree": 0.790991,
+    "differs_from_majority": {
+     "gold": 0.572973
+    },
+    "patterns": {
+     "equity all BUY \u00b7 gold BUY": 0.264865,
+     "equity all SELL \u00b7 gold BUY": 0.230631,
+     "equity all BUY \u00b7 gold SELL": 0.227027,
+     "equity split \u00b7 gold BUY": 0.14955,
+     "equity all SELL \u00b7 gold SELL": 0.068468,
+     "equity split \u00b7 gold SELL": 0.059459
+    },
+    "agree": [
+     [
+      1.0,
+      0.868468,
+      0.821622,
+      0.455856
+     ],
+     [
+      0.868468,
+      1.0,
+      0.891892,
+      0.454054
+     ],
+     [
+      0.821622,
+      0.891892,
+      1.0,
+      0.392793
+     ],
+     [
+      0.455856,
+      0.454054,
+      0.392793,
+      1.0
+     ]
+    ],
+    "buy_share": {
+     "N100": 0.609009,
+     "MC100": 0.636036,
+     "SC100": 0.556757,
+     "gold": 0.645045
+    },
+    "flips_yr": {
+     "N100": 2.731369,
+     "MC100": 2.91974,
+     "SC100": 2.354629,
+     "gold": 2.542999
+    },
+    "turns": {
+     "to SELL": {
+      "n": 10,
+      "first": {
+       "N100": 7,
+       "MC100": 6,
+       "SC100": 8
+      },
+      "alone_first": {
+       "N100": 2,
+       "MC100": 0,
+       "SC100": 2
+      }
+     },
+     "to BUY": {
+      "n": 11,
+      "first": {
+       "N100": 8,
+       "MC100": 7,
+       "SC100": 5
+      },
+      "alone_first": {
+       "N100": 2,
+       "MC100": 1,
+       "SC100": 1
+      }
+     }
+    },
+    "corr": [
+     [
+      1.0,
+      0.877625,
+      0.803013,
+      -0.018403
+     ],
+     [
+      0.877625,
+      1.0,
+      0.938449,
+      -0.036856
+     ],
+     [
+      0.803013,
+      0.938449,
+      1.0,
+      -0.026931
+     ],
+     [
+      -0.018403,
+      -0.036856,
+      -0.026931,
+      1.0
+     ]
+    ]
+   }
+  },
+  "us": {
+   "label": "US",
+   "assets": [
+    "SPY",
+    "IJR",
+    "GCC",
+    "GLD"
+   ],
+   "classes": [
+    [
+     "equity",
+     [
+      "SPY",
+      "IJR"
+     ],
+     0.5
+    ],
+    [
+     "commodity",
+     [
+      "GCC"
+     ],
+     0.25
+    ],
+    [
+     "gold",
+     [
+      "GLD"
+     ],
+     0.25
+    ]
+   ],
+   "first": "2011-01-07",
+   "last": "2026-11-18",
+   "shifts": 778,
+   "shift_range_weeks": [
+    26,
+    803
+   ],
+   "checks": {
+    "close_max_abs_diff": 0.0,
+    "calendar_equals_ref_pair": true,
+    "engine_book_max_abs_diff": 0.0,
+    "ref_vs_e10_cagr_diff": 0.0,
+    "st_missing_after_start": 0,
+    "mom_missing_after_start": 0,
+    "weights_row_sum_max_dev": 0.0,
+    "roll_equivalence_failures": 0,
+    "cut_checks": 8,
+    "cut_violations": [],
+    "shift_count_checks": 778,
+    "shift_count_mismatch": 0
+   },
+   "benchmarks": {
+    "neutral": {
+     "cagr": 0.092394,
+     "maxdd": -0.309083,
+     "vol": 0.144679
+    },
+    "equal": {
+     "cagr": 0.092394,
+     "maxdd": -0.309083,
+     "vol": 0.144679
+    },
+    "SPY": {
+     "cagr": 0.136065,
+     "maxdd": -0.337174,
+     "vol": 0.170701
+    },
+    "IJR": {
+     "cagr": 0.107136,
+     "maxdd": -0.443575,
+     "vol": 0.216298
+    },
+    "GCC": {
+     "cagr": 0.007066,
+     "maxdd": -0.618407,
+     "vol": 0.13938
+    },
+    "GLD": {
+     "cagr": 0.060557,
+     "maxdd": -0.45555,
+     "vol": 0.169539
+    }
+   },
+   "n_strategies": 12,
+   "ahead_of_neutral": 0,
+   "ahead_of_equal": 0,
+   "ahead_of_best_asset": 0,
+   "pct_T_high": 0,
+   "pct_T_low": 0,
+   "pct_P_high": 0,
+   "pct_P_low": 1,
+   "sync": {
+    "weeks": 829,
+    "first": "2011-01-07",
+    "last": "2026-11-18",
+    "equity_members": [
+     "SPY",
+     "IJR"
+    ],
+    "others": [
+     "GCC",
+     "GLD"
+    ],
+    "breadth": [
+     0.272618,
+     0.201448,
+     0.525935
+    ],
+    "all_agree": 0.798552,
+    "differs_from_majority": {
+     "GCC": 0.39807,
+     "GLD": 0.470446
+    },
+    "patterns": {
+     "equity all BUY \u00b7 GCC BUY \u00b7 GLD BUY": 0.211098,
+     "equity all BUY \u00b7 GCC SELL \u00b7 GLD SELL": 0.131484,
+     "equity all BUY \u00b7 GCC BUY \u00b7 GLD SELL": 0.108565,
+     "equity all SELL \u00b7 GCC SELL \u00b7 GLD BUY": 0.089264,
+     "equity all SELL \u00b7 GCC SELL \u00b7 GLD SELL": 0.079614,
+     "equity all BUY \u00b7 GCC SELL \u00b7 GLD BUY": 0.074789,
+     "equity split \u00b7 GCC SELL \u00b7 GLD SELL": 0.074789,
+     "equity all SELL \u00b7 GCC BUY \u00b7 GLD SELL": 0.056695,
+     "equity split \u00b7 GCC BUY \u00b7 GLD BUY": 0.055489,
+     "equity all SELL \u00b7 GCC BUY \u00b7 GLD BUY": 0.047045,
+     "equity split \u00b7 GCC SELL \u00b7 GLD BUY": 0.038601,
+     "equity split \u00b7 GCC BUY \u00b7 GLD SELL": 0.032569
+    },
+    "agree": [
+     [
+      1.0,
+      0.798552,
+      0.589867,
+      0.495778
+     ],
+     [
+      0.798552,
+      1.0,
+      0.588661,
+      0.55006
+     ],
+     [
+      0.589867,
+      0.588661,
+      1.0,
+      0.599517
+     ],
+     [
+      0.495778,
+      0.55006,
+      0.599517,
+      1.0
+     ]
+    ],
+    "buy_share": {
+     "SPY": 0.6538,
+     "IJR": 0.599517,
+     "GCC": 0.51146,
+     "GLD": 0.516285
+    },
+    "flips_yr": {
+     "SPY": 4.727951,
+     "IJR": 4.223637,
+     "GCC": 3.8454,
+     "GLD": 4.097558
+    },
+    "turns": {
+     "to SELL": {
+      "n": 28,
+      "first": {
+       "SPY": 20,
+       "IJR": 24
+      },
+      "alone_first": {
+       "SPY": 4,
+       "IJR": 8
+      }
+     },
+     "to BUY": {
+      "n": 27,
+      "first": {
+       "SPY": 20,
+       "IJR": 19
+      },
+      "alone_first": {
+       "SPY": 8,
+       "IJR": 7
+      }
+     }
+    },
+    "corr": [
+     [
+      1.0,
+      0.85628,
+      0.403836,
+      0.126924
+     ],
+     [
+      0.85628,
+      1.0,
+      0.409019,
+      0.100062
+     ],
+     [
+      0.403836,
+      0.409019,
+      1.0,
+      0.471925
+     ],
+     [
+      0.126924,
+      0.100062,
+      0.471925,
+      1.0
+     ]
+    ]
+   }
+  }
+ },
+ "check_us_pdbc": {
+  "first": "2017-01-06",
+  "last": "2026-11-18",
+  "neutral_cagr": 0.110843,
+  "ahead_of_neutral": 6
+ },
+ "seconds": 112
+}

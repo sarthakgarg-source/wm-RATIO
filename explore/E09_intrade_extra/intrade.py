@@ -6,6 +6,11 @@ Design: explore/E09_intrade_extra/E09.md (written before the first run).
 
 Every number on the page and in E09_results.md is computed here; the page's script only picks the numbers of the chosen
 controls from the embedded results and draws them. Not a finding and not a test of any rule.
+
+Re-run on 2026-11-26 on the latest data (explore/E01_ratio_cycles/latest.py; E09.md, the block of that date): the Indian
+and gold pairs on N100, MC100, SC100 and MCX gold from load_india_latest() to 2026-11-20, Micro250 on its earlier data,
+all from 2011-01-01; on the gold pairs the rule holds the liquid ETF instead of gold while gold's weekly supertrend is
+SELL, in the real runs and in every null draw. The US pairs are unchanged (the engine's own start, as in E08).
 """
 import argparse
 import html
@@ -21,11 +26,13 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE)); OUT = os.path.join(HERE, "out")
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_ratio_cycles"))
-from analysis.approved_data import GOLD, fingerprints, load_daily, load_us_etf, load_us_gold  # noqa: E402
+from analysis.approved_data import GOLD, fingerprints, load_us_etf, load_us_gold  # noqa: E402
+import analysis.ratio_engine as RE  # noqa: E402  (its pair start, set per universe)
 from analysis.ratio_engine import PAIRS, counts, null_A, null_B, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (page styling, percentile)
 import zwin as ZW  # noqa: E402  (the z windows)
 import variants as VR  # noqa: E402  (the rule through the engine's book)
+import latest as LT  # noqa: E402  (the latest Indian data and the gold → liquid switch)
 
 US_ETFS = ["GCC", "FTGC", "COMT", "PDBC", "BCI", "BCD", "COM", "CMDY", "SDCI", "HGER", "NBCM", "PIT", "CERY"]
 UNIVERSES = (("index", "Indian index pairs", [p for p in PAIRS if GOLD not in p]), ("gold", "gold pairs", [p for p in PAIRS if GOLD in p]),
@@ -73,6 +80,45 @@ def fast_extras(targets, kd, fa, fb):
     return out
 
 
+def fast_extras3(targets, sell, kd, fa, fb, fl, cb):
+    """fast_extras with the switch (the latest data; variants.book3): in a week whose decision falls in gold's weekly
+    supertrend SELL, gold's weight (the second leg's) is held in the liquid ETF (fl: its level on the pair's days, which is
+    also its fill). The rule's trades are book3's; a gold trade's held return compounds gold and the liquid ETF as held
+    (its peer is the first leg); an A trade's peer is gold itself. Returns (trades as fast_extras, gold_leg) where
+    gold_leg(ke, None) is a gold trade's held return from the entry fill to the last close (for an open trade)."""
+    n = len(fa); held = "N"; cur = ("N", bool(sell[0])); tr = []; alloc = [(int(kd[0]) + 1, bool(sell[0]))]
+    for i in range(1, len(targets)):
+        t = targets[i]; key = (t, bool(sell[i]) and t != "A")
+        if key == cur:
+            continue
+        kt = int(kd[i]) + 1
+        if kt >= n:
+            break
+        alloc.append((kt, key[1])); cur = key
+        if t != held:
+            tr.append((kt, t)); held = t
+    ak = np.array([a[0] for a in alloc]); al = np.array([a[1] for a in alloc])
+
+    def gold_leg(ke, kx):
+        end = kx if kx is not None else n - 1; idx = np.flatnonzero((ak >= ke) & (ak < (kx if kx is not None else n)))
+        stops = [int(ak[j]) for j in idx] + [end]; g = 1.0
+        for j, jj in enumerate(idx):
+            s0, s1 = stops[j], stops[j + 1]; lq = bool(al[jj])
+            p1 = (fl[s1] if lq else fb[s1]) if kx is not None or j < len(idx) - 1 else (fl[s1] if lq else cb[s1])
+            g *= p1 / (fl[s0] if lq else fb[s0])
+        return g - 1
+    out = []
+    for j, (kt, to) in enumerate(tr):
+        if to == "N":
+            continue
+        if j + 1 < len(tr):
+            kx = tr[j + 1][0]; ra = fa[kx] / fa[kt] - 1; rb = fb[kx] / fb[kt] - 1
+            out.append((kt, kx, to, ra, rb) if to == "A" else (kt, kx, to, gold_leg(kt, kx), ra))
+        else:
+            out.append((kt, None, to, np.nan, np.nan))
+    return out, gold_leg
+
+
 def summ(closed):
     """Mean extra per trade and compounded in-trade extra of a list of (held_ret, peer_ret)."""
     if not closed:
@@ -84,15 +130,19 @@ def summ(closed):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--draws", type=int, default=1000); ND = ap.parse_args().draws
     t0 = time.time(); os.makedirs(OUT, exist_ok=True)
-    px_in, px_us = load_daily(), load_us_etf(); px_us.update(load_us_gold())
+    px_in, px_us = LT.load_india(), load_us_etf(); px_us.update(load_us_gold())
+    START0 = dict(RE.START); SW = LT.activate(px_in); START_IN = dict(RE.START)   # the US pairs keep the engine's own start (as in E08)
     checks = {"t03_mismatch": [], "replay_mismatch": [], "e06_unmatched": None, "e06_max_abs_diff": None, "e08_unmatched": None, "e08_max_abs_diff": None, "null_draws": 0, "null_count_mismatch": 0}
     SROWS, TROWS, S, T, POOLED = [], [], {}, {}, {}
     for ui, (u, ulab, pairs) in enumerate(UNIVERSES):
-        px = px_us if u in US_UNIVERSES else px_in
+        px = px_us if u in US_UNIVERSES else px_in; RE.START.update(START0 if u in US_UNIVERSES else START_IN)
         for pid, pair in enumerate(pairs):
             pf = pair_frame(px, pair, "plain"); dec = pf.index[pf["decision"]]; days = pf.index; pos = {d: k for k, d in enumerate(days)}
             fa, fb, ca, cb = pf["fa"].to_numpy(), pf["fb"].to_numpy(), pf["ca"].to_numpy(), pf["cb"].to_numpy(); la, lb = pair.split("|")
             S[pair], T[pair] = {}, {}
+            swp = VR.SWITCH is not None and VR.SWITCH.is_gold_pair(pf)   # the switch on a gold pair
+            if swp:
+                fl = SW.liquid_on(days); sell_all = pd.Series(SW.sell_at(dec), index=dec)
             for wi, (w, *_) in enumerate(ZW.WINDOWS):
                 z = VR.z_at_decisions(pf, w); bd = z.dropna()
                 if len(bd) < 30:
@@ -101,7 +151,14 @@ def main():
                 if u in NSE_UNIVERSES and w == ZW.DEFAULT:
                     checks["t03_mismatch"] += VR.check_against_t03({"pair": pair, **r})
                 dd = r["decisions"]; dd = dd[dd["z"].notna()]; targets = dd["state_after"].tolist(); kd = np.array([pos[d] for d in dd.index])
-                fx = fast_extras(targets, kd, fa, fb); ex = r["extras"]
+                if swp:
+                    sw_ = sell_all.reindex(dd.index).to_numpy(bool)
+                    def FX(tg):
+                        return fast_extras3(tg, sw_, kd, fa, fb, fl, cb)
+                else:
+                    def FX(tg):
+                        return fast_extras(tg, kd, fa, fb), None
+                fx, gleg = FX(targets); ex = r["extras"]
                 # the fast replay must be the book's trades
                 same = len(fx) == len(ex)
                 if same and len(ex):
@@ -116,6 +173,8 @@ def main():
                     ed = dec[dec < days[ke]][-1]; held_name, peer_name = (la, lb) if leg == "A" else (lb, la)
                     if kx is None:   # open: to date, from the entry fill to the last close
                         hc = (ca[-1] if leg == "A" else cb[-1]) / (fa[ke] if leg == "A" else fb[ke]) - 1; pc_ = (cb[-1] if leg == "A" else ca[-1]) / (fb[ke] if leg == "A" else fa[ke]) - 1
+                        if gleg is not None and leg == "B":
+                            hc = gleg(ke, None)   # gold or the liquid ETF as held, to the last close
                         rows.append({"entry_decision": ed, "entry": days[ke], "exit": None, "held": held_name, "peer": peer_name, "held_ret": hc, "peer_ret": pc_, "extra": hc - pc_,
                                      "weeks": int(((dec > ed)).sum()), "days": int((days[-1] - days[ke]).days), "open": True, "cum": np.nan})
                     else:
@@ -136,7 +195,7 @@ def main():
                         tg = fn(targets, np.random.default_rng([ui, pid + off, drw, wi])); cc = counts(tg); checks["null_draws"] += 1
                         ok = (cc == base) if nname == "N-A" else (cc["spells"] == base["spells"] and cc["switches"] == base["switches"] and cc["weeks_N"] == base["weeks_N"])
                         checks["null_count_mismatch"] += (not ok)
-                        m_, c_ = summ([(h, p) for ke, kx, leg, h, p in fast_extras(tg, kd, fa, fb) if kx is not None]); nm[nname].append(m_); nc[nname].append(c_)
+                        m_, c_ = summ([(h, p) for ke, kx, leg, h, p in FX(tg)[0] if kx is not None]); nm[nname].append(m_); nc[nname].append(c_)
                 def pct(x, arr):
                     a = np.array(arr, float); a = a[~np.isnan(a)]
                     return E1.pctile(x, a) if x == x and len(a) else np.nan
@@ -185,7 +244,7 @@ def main():
             POOLED[u][w] = {"pairs": int(len(g)), "pos_comp": int((g["compounded"] > 0).sum()), "median_per_year": r6(g["per_year_in_trade"].median()), "trades": int(len(tt)),
                             "won": r6((tt["extra"] > 0).mean()) if len(tt) else None, "mean": r6(tt["extra"].mean()) if len(tt) else None, "median": r6(tt["extra"].median()) if len(tt) else None,
                             "na_hi": int((g["na_pct_comp"] >= HI).sum()), "na_lo": int((g["na_pct_comp"] <= LO).sum()), "nb_hi": int((g["nb_pct_comp"] >= HI).sum()), "nb_lo": int((g["nb_pct_comp"] <= LO).sum()), "buckets": bk}
-    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "draws_per_null": ND, "seed": f"default_rng([universe_id, pair_id (+{SEED_NB} for N-B), draw, window_id])",
+    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "data": LT.NOTE, "us_pairs_start": START0, "inputs": fingerprints(), "draws_per_null": ND, "seed": f"default_rng([universe_id, pair_id (+{SEED_NB} for N-B), draw, window_id])",
              "checks": checks, "trades": int(len(TR)), "closed": int(len(cl_)), "pooled_w52": {u: {k: v for k, v in POOLED[u][ZW.DEFAULT].items() if k != "buckets"} for u in POOLED}, "seconds": round(time.time() - t0)}
     json.dump(audit, open(os.path.join(OUT, "audit.json"), "w", encoding="utf-8"), indent=1, default=str)
 
@@ -196,7 +255,8 @@ def main():
     wl = {w: f"{lab}{' (daily)' if f == 'D' else ''}" for w, lab, f, _ in ZW.WINDOWS}
     md = [f"# E09 results — while in a trade, how much did the held index beat its peer? (EXPLORATORY)\n",
           f"_Generated by `explore/E09_intrade_extra/intrade.py` on {audit['run_date']}. Rule R (T03's: ±1, exit at 0) on every z window; extra = the held index's return minus its peer's, entry fill to exit fill, before costs. {ND:,} draws per null. Description, not a finding; percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
-          f"**Checks:** the 52-week Indian and gold runs are T03's; the trades equal E06's ({checks['e06_max_abs_diff']:.1e}) and E08's ({checks['e08_max_abs_diff']:.1e}); the fast replay equals the book's trades on every pair and window; {checks['null_draws']:,} null draws, every one kept its counts.\n"]
+          f"**Data:** {LT.NOTE} (the Indian and gold pairs; the US pairs unchanged). On the gold pairs the held leg is gold or the liquid ETF as held, in the real runs and in every null draw.\n",
+          f"**Checks:** the 52-week Indian and gold runs have the engine's decisions (and, on the gold pairs with the switch off, the engine's book); the trades equal E06's ({checks['e06_max_abs_diff']:.1e}) and E08's ({checks['e08_max_abs_diff']:.1e}); the fast replay equals the book's trades on every pair and window; {checks['null_draws']:,} null draws, every one kept its counts.\n"]
     for u, ulab, pairs in UNIVERSES:
         md += [f"## {ulab} — z window {wl[ZW.DEFAULT]} (T03's)\n",
                "| pair | period | closed trades | held beat peer | mean / median extra per trade | compounded in-trade extra | years in trade (share of time) | extra a year in trade | percentile vs random times (N-A): mean · compounded | vs random legs (N-B): mean · compounded | open trade (to date) |",
@@ -235,9 +295,10 @@ def main():
     H = [E1.PAGE_HEAD.replace("__CSS__", E1.CSS + CSS_EXTRA).replace("<title>Ratio cycles</title>", "<title>In-trade extra</title>"),
          "<header class='bar'><div class='bar-inner'><b>E09 · in-trade extra</b><span class='tag'>EXPLORATORY</span>", controls, "<button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>While in a trade, how much did the held index beat its peer?</h1>",
+         f"<p class='note'><b>Data:</b> {html.escape(LT.NOTE)} (the Indian and gold pairs; the US pairs are unchanged). On the gold pairs the held leg is gold or the liquid ETF as held, in the real runs and in every null draw.</p>",
          f"<p>The rule (T03's): every Friday close, z = (ratio − its trailing mean) ÷ its trailing sd over the chosen z window; from 50/50, the first week z crosses below −1 → hold only the first index, above +1 → only the second; back to 50/50 when z returns to 0. "
          f"<b>Extra</b> = the held index's return minus the other's, from the entry fill to the exit fill, before costs — what the signal's choice of index was worth while the trade was open (against 50/50 the sleeve earns half of it). "
-         f"Four universes: the six Indian index pairs (from 2006), the four gold pairs (Indian indices against MCX gold, from 2015), the thirteen commodity ETFs ÷ SPY (total return, from 2010–2026) and, added on 2026-11-20, "
+         f"Four universes: the six Indian index pairs (from {LT.DATA_FROM.year}; Micro250 from 2022), the four gold pairs (Indian indices against MCX gold, from {LT.DATA_FROM.year}; the liquid ETF in place of gold on SELL weeks), the thirteen commodity ETFs ÷ SPY (total return, from 2010–2026) and, added on 2026-11-20, "
          f"<b>SPY against gold</b> (GLD ÷ SPY, from 2010). Generated {audit['run_date']}. <b>Description, not a finding.</b></p>",
          "<div class='card'>" + key + "</div>",
          "<h2>1 · Every pair of the chosen universe</h2><p class='note'>Compounded in-trade extra = what holding the chosen index instead of its peer through every closed trade was worth; a year in trade = that, per year spent in trades. Percentiles: among " + f"{ND:,}" + " draws of the same trades at random times (N-A) and with the index chosen by a coin (N-B); ≤ 5 or ≥ 95 = notable.</p>",
@@ -246,10 +307,10 @@ def main():
          "<h2>3 · The chosen pair, trade by trade</h2>", "<div class='card'><div id='g_tr' class='plot'></div><div id='g_cum' class='plot'></div><details><summary>Table view</summary><div id='t_tr'></div></details></div>",
          "<h2>4 · By how long the trade lasted</h2>", "<div class='card'><div id='g_bk' class='plot'></div><div id='t_bk'></div></div>",
          "<h2>Method and limits</h2><div class='card'><ul>"
-         "<li><b>Trades.</b> explore/E01_ratio_cycles/variants.py and analysis/ratio_engine.book: fills the session after the decision (OHLC4 for the NSE and MCX legs, the close for the US ETFs and GLD), 10.4 bps per side; the 52-week Indian and gold runs are T03's; the trades equal E06's and E08's. "
+         "<li><b>Trades.</b> explore/E01_ratio_cycles/variants.py and analysis/ratio_engine.book: fills the session after the decision (OHLC4 for the NSE and MCX legs, the close for the US ETFs and GLD), 10.4 bps per side; the 52-week Indian and gold runs have the engine's decisions (and, with the switch off, the engine's book); on the gold pairs a week whose decision falls in gold's weekly supertrend SELL holds the liquid ETF in place of gold (variants.book3), so a gold trade's held return compounds gold and the liquid ETF as held; the trades equal E06's and E08's. "
          "GLD through analysis/approved_data.load_us_gold() (approved 2026-11-20; no distributions).</li>"
-         f"<li><b>Nulls.</b> analysis/ratio_engine.null_A and null_B on the same targets, {ND:,} draws each, seed default_rng([universe_id, pair_id (+100 for N-B), draw, window_id]); each draw's extras replayed from the fill prices exactly as the book trades (checked equal to the book on every real run); every draw's counts measured.</li>"
-         "<li><b>Limits.</b> Extras before costs (a round trip costs the sleeve about 0.2%); the windows' trades overlap; different periods per universe; the US pairs were explored in E08 and the Indian pairs refuted the rule in T02/T03. Design written before the first run: explore/E09_intrade_extra/E09.md.</li></ul></div>",
+         f"<li><b>Nulls.</b> analysis/ratio_engine.null_A and null_B on the same targets, {ND:,} draws each, seed default_rng([universe_id, pair_id (+100 for N-B), draw, window_id]); each draw's extras replayed from the fill prices exactly as the book trades (on the gold pairs with the switch, as variants.book3 trades; checked equal to the book on every real run); every draw's counts measured.</li>"
+         "<li><b>Limits.</b> Extras before costs (a round trip costs the sleeve about 0.2%); the windows' trades overlap; different periods per universe; the US pairs were explored in E08 and the Indian pairs refuted the rule in T02/T03; the Indian series start in 2011; the gold leg has an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); the liquid level has no recorded source before 2024-01-24 (F-RA-D17). Design written before the first run: explore/E09_intrade_extra/E09.md.</li></ul></div>",
          "</main>", f"<script id='e09-data' type='application/json'>{blob}</script>", "<script>" + get_plotlyjs() + "</script>", "<script>" + PAGE_JS + "</script></body></html>"]
     out = os.path.join(OUT, "E09_intrade.html"); open(out, "w", encoding="utf-8").write("\n".join(H))
     print(f"done in {time.time() - t0:.0f}s; page {os.path.getsize(out) / 1e6:.1f} MB → {out}")

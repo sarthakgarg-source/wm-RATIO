@@ -8,6 +8,12 @@ B. The market's condition at the entry of every T03 trade (window 52, exit E1, 2
 
 Run only after T03's run finished (locked and run). Part B uses T03's trades: the rule with no maximum hold.
 Not a finding and not a test of any rule.
+
+Re-run on 2026-11-26 on the latest data (explore/E01_ratio_cycles/latest.py; E03.md, the block of that date): N100, MC100,
+SC100 and MCX gold from load_india_latest() to 2026-11-20, Micro250 on its earlier data, all from 2011-01-01; whenever the
+rule holds gold while gold's weekly supertrend is SELL it holds the liquid ETF instead. T03's evidence is on the earlier data,
+so Part B's 52-week trades are T03's rule computed here (variants.py through the engine's book, the switch on the gold pairs),
+checked against the engine's decide() and, with the switch off, the engine's book.
 """
 import argparse
 import html
@@ -25,11 +31,12 @@ from plotly.subplots import make_subplots
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE)); OUT = os.path.join(HERE, "out")
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_ratio_cycles"))
-from analysis.approved_data import GOLD, fingerprints, load_daily  # noqa: E402
+from analysis.approved_data import GOLD, fingerprints  # noqa: E402
 from analysis.ratio_engine import PAIRS, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (E01's z-score, random paths, percentiles and the page's styling)
 import zwin as ZW  # noqa: E402  (the z windows: weekly 13 / 26 / 52, daily 20 / 60 / 120 / 250)
 import variants as VR  # noqa: E402  (the T03 rule on each z window's band, through the engine's book)
+import latest as LT  # noqa: E402  (the latest data and the gold → liquid switch)
 
 HORIZONS = (4, 13, 26)
 HORIZONS_D = (20, 65, 130)                      # daily windows: the same horizons in trading days (5 a week)
@@ -233,9 +240,15 @@ def load_trades(test):
     return x, d, audit
 
 
+_VT = {}
+
+
 def variant_trades(px, w):
     """The T03 rule on z window w's band for every pair (explore/E01_ratio_cycles/variants.py, the engine's book): the trade
-    extras and the decisions in load_trades()'s shape, and, for the 52-week window, the check against T03's evidence."""
+    extras and the decisions in load_trades()'s shape, and, for the 52-week window, the check against T03's evidence (on the
+    latest data: against the engine's decide() and book). Computed once per window."""
+    if w in _VT:
+        return _VT[w]
     xs, ds, bad = [], [], []
     for pair in PAIRS:
         v = VR.run_variant(px, pair, w)
@@ -247,7 +260,8 @@ def variant_trades(px, w):
     x = pd.concat(xs, ignore_index=True); x["open"] = x["open"].astype(bool)
     for col in ("entry_decision", "entry_trade", "exit_trade"):
         x[col] = pd.to_datetime(x[col])
-    return x, pd.concat(ds, ignore_index=True), bad
+    _VT[w] = (x, pd.concat(ds, ignore_index=True), bad)
+    return _VT[w]
 
 
 def trade_rows(test, x, dec, series, zc, zall, mkt, corr=None):
@@ -311,13 +325,15 @@ def assoc(df, rng, P, conds=CONDS):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--draws", type=int, default=2000); ap.add_argument("--perms", type=int, default=2000)
     args = ap.parse_args(); D, P = args.draws, args.perms
-    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_daily()
+    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = LT.load_india(); LT.activate(px)
     audits = {}
-    for test in TESTS:                                                   # the test must be locked and run
+    for test in TESTS:                                                   # the test must be locked and run; its evidence (earlier data) is not read
         ev = os.path.join(ROOT, "tests", test, "evidence", RUN)
         if not os.path.exists(os.path.join(ev, "trade_extras.csv")):
             sys.exit(f"{test}: no run at {ev}; E03 runs only after the test has run")
-        a = json.load(open(os.path.join(ev, "audit.json"), encoding="utf-8")); audits[test] = {"run_date": a.get("run_date"), "ratio": a.get("ratio", "log"), "draws": a.get("draws")}
+        a = json.load(open(os.path.join(ev, "audit.json"), encoding="utf-8"))
+        audits[test] = {"run_date": a.get("run_date"), "ratio": a.get("ratio", "log"), "evidence_read": False,
+                        "why": "the evidence is on the earlier data; the 52-week trades are the rule computed here on the latest data, with the switch on the gold pairs"}
     # ---------------------------------------------------------------- Part A
     prof, A_chk, win = [], {}, {}
     for pid, pair in enumerate(PAIRS):
@@ -355,7 +371,9 @@ def main():
     trades, n_open, opened = [], {}, []
     zc52 = {p: series[p][1][["z", "since_zero", "band_width"]] for p in PAIRS}
     for test in TESTS:
-        x_, d_, _ = load_trades(test)
+        x_, d_, bad_ = variant_trades(px, ZW.DEFAULT)                   # the latest data: T03's rule computed here (not T03's evidence)
+        if bad_:
+            sys.exit("the 52-week run fails its check against the engine: " + "; ".join(bad_))
         r, n_open[test], o = trade_rows(test, x_, d_, series, zc52, zall, mkt); trades += r; opened += o
     TR = pd.DataFrame(trades); TR.to_csv(os.path.join(OUT, "trades_conditions.csv"), index=False)
     OP = pd.DataFrame(opened, columns=["test", "pair", "entry_trade", "held_leg", "days_open", "to"])
@@ -379,7 +397,7 @@ def main():
     for w, *_ in ZW.WINDOWS:
         x_, d_, bad_ = variant_trades(px, w)
         if bad_:
-            sys.exit("the 52-week variant is not T03: " + "; ".join(bad_))
+            sys.exit("the 52-week run fails its check against the engine: " + "; ".join(bad_))
         r, n_open_w[w], o = trade_rows(MAIN, x_, d_, series, {p: zcw[(w, p)] for p in PAIRS}, {p: zcw[(w, p)]["z"].dropna() for p in PAIRS}, mkt, corr)
         trw += [dict(rr, window=w) for rr in r]; opw += [dict(oo, window=w) for oo in o]
         print(f"  B window {w:5s} {len(r):4d} closed trades, {n_open_w[w]} open  [{time.time() - t0:4.0f}s]", flush=True)
@@ -387,8 +405,8 @@ def main():
     a_ = TRW[TRW["window"] == ZW.DEFAULT][TR.columns].sort_values(["pair", "entry_trade"]).reset_index(drop=True); b_ = TR.sort_values(["pair", "entry_trade"]).reset_index(drop=True)
     num_ = [c for c in TR.columns if pd.api.types.is_float_dtype(TR[c])]
     if len(a_) != len(b_) or not a_.drop(columns=num_).equals(b_.drop(columns=num_)) or not np.allclose(a_[num_].to_numpy(float), b_[num_].to_numpy(float), rtol=0, atol=1e-9, equal_nan=True):
-        sys.exit("Part B: the 52-week variant's trades or conditions differ from T03's")
-    print(f"  B the 52-week variant's {len(a_)} trades equal T03's, conditions included; correlation look-ahead check: {CPIT[0]} checks, 0 violations")
+        sys.exit("Part B: the window code's 52-week trade rows (conditions included) differ from condition_series()'s")
+    print(f"  B the window code's 52-week {len(a_)} trade rows equal condition_series()'s, conditions included; correlation look-ahead check: {CPIT[0]} checks, 0 violations")
     TRW.to_csv(os.path.join(OUT, "trades_conditions_windows.csv"), index=False)
     # trade lengths per test and pair: calendar days from the entry fill to the exit fill (closed trades); open ones separately
     def durations(T_, O_, label):
@@ -437,13 +455,16 @@ def main():
     C_pw = {w: [v for v in CSC[CSC["window"] == w]["diff_pct"].tolist() + CSC[CSC["window"] == w]["rho_pct"].tolist() if v == v] for w, *_ in ZW.WINDOWS}
     nCw = {w: sum(E1.notable(v) for v in C_pw[w]) for w in C_pw}
     assert nBw[ZW.DEFAULT] == nB and len(B_pw[ZW.DEFAULT]) == len(B_p)
-    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "tests": audits, "setting": {"window": WIN, "exit": EXIT, "run": RUN},
+    sw_n = int(sum(len(VR.run_variant(px, p, ZW.DEFAULT).get("switch_trades", [])) for p in PAIRS if GOLD in p))
+    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "data": LT.NOTE, "inputs": fingerprints(), "tests": audits, "setting": {"window": WIN, "exit": EXIT, "run": RUN},
+             "switch": {"gold_pairs": [p for p in PAIRS if GOLD in p], "gold_liquid_switches_52wk": sw_n,
+                        "rule": "on a gold-held week whose decision falls in gold's weekly supertrend SELL, the gold leg is the liquid ETF; extra = (gold or liquid, compounded) − the peer"},
              "part_A": {"draws": D, "seed": f"default_rng([{E1.SEED_SIGNS}, pair_id]) (E01's signs)", "random_legs": "M = (ln a + ln b) / 2 kept real; a* = exp(M + ln r* / 2), b* = exp(M - ln r* / 2)",
                         "z_equals_E01_max_abs_diff": max(A_chk.values()), "horizons": HORIZONS, "buckets": [b[0] for b in BUCKETS], "notable": [nA, len(A_p)]},
              "part_B": {"perms": P, "seed": f"default_rng([{SEED_PERM}, test_id, pool_id])", "conditions": [c[0] for c in CONDS], "look_ahead_check": {"checks": PIT[0], "violations": PIT[1]},
                         "open_trades_left_out": n_open, "max_hold": "none (T03)", "notable": [nB, len(B_p)]},
              "part_B_windows": {"rule": "T03's rule on each z window's band (explore/E01_ratio_cycles/variants.py), decisions weekly, through the engine's book, 20.8 bps",
-                                "check_52_week": "the 52-week variant's decisions, NAV and trades equal T03's evidence on every pair, and its trade rows (conditions included) equal the T03 rows",
+                                "check_52_week": "on the latest data: the 52-week run's decisions equal the engine's decide() on every pair, its book with the switch off equals the engine's book (gold pairs), and the window code's trade rows (conditions included) equal condition_series()'s",
                                 "seed": f"default_rng([{SEED_PERM}, window_id, pool_id]), window_id = the index in {[w[0] for w in ZW.WINDOWS]}",
                                 "windows": {w: {"closed_trades": int((TRW["window"] == w).sum()), "open_trades": n_open_w[w], "notable": [nBw[w], len(B_pw[w])]} for w, *_ in ZW.WINDOWS}},
              "corr_periods": {"periods": [c[0] for c in CWINS], "default": CDEFAULT, "seed": f"default_rng([{SEED_CORR}, window_id, pool_id]); cw26 and cw52 reuse corr26 / corr52",
@@ -454,7 +475,8 @@ def main():
     # ---------------------------------------------------------------- results (markdown)
     def pq(v): return f"**{v:.1f}**" if E1.notable(v) else E1.f2(v, 1)
     md = [f"# E03 results — when does the ratio switch work? (EXPLORATORY)\n",
-          f"_Generated by `explore/E03_trade_conditions/conditions.py` on {audit['run_date']} from {MAIN} (run {audits[MAIN]['run_date']}) at window {WIN}, exit {EXIT}, 20.8 bps, no maximum hold; Part A against {D:,} random paths per pair, Part B against {P:,} permutations. Description, not a finding. Percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
+          f"_Generated by `explore/E03_trade_conditions/conditions.py` on {audit['run_date']} with {MAIN}'s rule computed here at window {WIN}, exit {EXIT}, 20.8 bps, no maximum hold; Part A against {D:,} random paths per pair, Part B against {P:,} permutations. Description, not a finding. Percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
+          f"**Data:** {LT.NOTE}. On the gold pairs the held gold leg was the liquid ETF on {sw_n} switches at the 52-week window; a trade's extra uses what was held. {MAIN}'s own evidence is on the earlier data and is not read.\n",
           f"**Against chance:** Part A {nA} of {len(A_p)} percentiles notable (about {0.1 * len(A_p):.0f} by chance); Part B {nB} of {len(B_p)} (about {0.1 * len(B_p):.0f} by chance).\n",
           "## Part A — forward returns by z bucket (cheaper leg = the one that has lagged)\n",
           "Per pair, bucket and horizon: weeks (episodes), cheaper leg mean / median, richer leg mean / median, spread = cheaper − richer mean (random walks' median, percentile) / median (percentile), both legs' average. Window after the 52-week warm-up.\n"]
@@ -744,10 +766,11 @@ def main():
          "<header class='bar'><div class='bar-inner'><b>E03 · trade conditions</b><span class='tag'>EXPLORATORY</span>",
          f"<label>Pair <select id='pair'>{opts}</select></label>{ZW.select_html()}<label>Correlation period <select id='cwin'>{copts}</select></label><button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>When does the ratio switch work?</h1>",
+         f"<p class='note'><b>Data:</b> {html.escape(LT.NOTE)}. On the gold pairs the held gold leg was the liquid ETF on {sw_n} switches at the 52-week window; a trade's extra uses what was held.</p>",
          f"<p>Two descriptions, made after the ±1 sd ratio-band switch was locked, run and refuted (T02, T03). <b>A.</b> Every week, the ratio's z-score (the ±1 sd band in units of its sd) is bucketed and the next 4, 13 and 26 weeks' returns of the <b>cheaper</b> leg (the one that has lagged) and the <b>richer</b> leg are shown, against {D:,} random paths of the ratio that keep the two legs' common movement real. "
          f"<b>B.</b> Every closed trade of {MAIN}'s rule — <b>no maximum hold</b>: a trade lasts until the ratio is back at its trailing mean — (exit {EXIT}, 20.8 bps) carries the market's condition at its entry and during it; conditions are compared between good trades (the held leg beat the peer, fill to fill) and bad ones, against {P:,} permutations of the outcomes within each pair. "
-         f"With the 52-week window the trades are {MAIN}'s own; with the other windows the same rule runs on that window's band (decisions still weekly). "
-         f"Generated {audit['run_date']} from the approved data of 2026-11-12 and {MAIN}'s evidence (run {audits[MAIN]['run_date']}). <b>Description, not a finding</b>: a condition that goes with good trades here is a candidate for a pre-registered test, not a rule.</p>",
+         f"With the 52-week window the trades are {MAIN}'s rule (computed here on the latest data); with the other windows the same rule runs on that window's band (decisions still weekly). "
+         f"Generated {audit['run_date']} from the latest data (the note above). <b>Description, not a finding</b>: a condition that goes with good trades here is a candidate for a pre-registered test, not a rule.</p>",
          f"<div class='card'><p style='margin:4px 0'><b>The two dropdowns at the top.</b> <b>z window</b> switches every chart and table on the page: Part A's band and random walks, and Part B's trades (the rule on that window's band) with every condition that depends on z. "
          f"<b>Correlation period</b> sets the lookback of the legs' correlation (13, 26 or 52 weeks of weekly returns; 20, 60, 120 or 250 days of daily returns) on the correlation chart and the scatter's correlation panel; the correlation heat map shows every period at once.</p></div>",
          f"<div class='card'><p style='margin:4px 0'><b>Against chance:</b> Part A {nA} of {len(A_p)} percentiles are notable at the 52-week window (about {0.1 * len(A_p):.0f} would be by chance); Part B "
@@ -756,7 +779,7 @@ def main():
          "<h2>A · What each leg does next, by how stretched the ratio is</h2><p class='note'>Pick the pair at the top. Bars: the mean forward return of the cheaper leg, the richer leg and their difference (the spread: what holding the cheaper leg earns against the richer one, before costs). The grey mark is the spread on the random walks (median, 5th–95th); a blue bar outside the grey range is notable. Weeks overlap, so the episode count in the table is the honest sample size. <b>The z window dropdown at the top</b> switches Part A between the 52-week band and shorter weekly and daily windows (daily: daily closes, horizons of 20, 65 and 130 trading days, daily random walks).</p>",
          per_pair("prof", figs["prof"], tab_prof, first=True),
          per_win("h_prof", figs["h_prof"]),
-         "<h2>B · The market's condition at each trade</h2><p class='note'>The trades on the chosen pair and z window, over the two legs (no maximum hold). With the 52-week window these are T03's trades. Hover a marker for the trade's outcome and the market at its entry.</p>",
+         "<h2>B · The market's condition at each trade</h2><p class='note'>The trades on the chosen pair and z window, over the two legs (no maximum hold). With the 52-week window these are T03's rule's trades on the latest data. Hover a marker for the trade's outcome and the market at its entry.</p>",
          per_pair("tl", figs["tl"], tab_tl),
          "<h3>How many trades, and how long each one lasted</h3><p class='note'>The trades on the chosen pair and z window, with no maximum hold: each one lasts until the ratio is back at its trailing mean (or is still open at the end). The table under the chart has every pair.</p>",
          per_pair("days", figs["days"], tab_days),
@@ -770,11 +793,12 @@ def main():
          "<h3>By the length of the hold, and per pair</h3><div class='card'>" + win_divs(hold_t) + "</div>",
          "<h2>Method and limits</h2><div class='card'><ul>"
          "<li><b>Part A.</b> z = (plain ratio − trailing 52-week mean) ÷ trailing sd (E01's). Cheaper leg = a when z < 0, b when z > 0. Forward returns are close to close on decision weeks, simple, no costs or fills. Random paths: E01's (the point-in-time residuals with the same random signs plus the expanding drift, after the real 52-week warm-up); with M = ½(ln a + ln b) kept real, the random legs are exp(M ± ½ ln r*), so only the legs' relative movement is random. The window starts after the warm-up. Percentile = (paths below + ½ ties) ÷ paths.</li>"
-         f"<li><b>Part B.</b> 52-week window: trades from tests/{MAIN}/evidence/{RUN}/trade_extras.csv at window {WIN}, exit {EXIT}. Other z windows: the same rule on that window's band (explore/E01_ratio_cycles/variants.py: enter on the first decision week with z beyond ±1, exit when z is back through 0; decisions weekly, daily windows read the daily z at the decision day; fills, costs and valuation through the engine's own book); the 52-week run through the same code is checked to give {MAIN}'s decisions, NAV and trades exactly. "
+         f"<li><b>Part B.</b> Every z window, the 52-week one included: {MAIN}'s rule (window {WIN}, exit {EXIT}) on that window's band (explore/E01_ratio_cycles/variants.py: enter on the first decision week with z beyond ±1, exit when z is back through 0; decisions weekly, daily windows read the daily z at the decision day; fills, costs and valuation through the engine's own book). On the latest data the 52-week run is checked against the engine's decide() (decisions) and, on the gold pairs with the switch off, against the engine's book; {MAIN}'s evidence is on the earlier data and is not read. "
+         f"Gold pairs: whenever the rule holds gold in a week whose decision falls in gold's weekly supertrend SELL, it holds the liquid ETF instead (bought at the next session's fill, 10.4 bps per side); the held leg's return compounds gold and liquid over the trade. "
          f"No maximum hold; open trades left out of the outcome statistics ({n_open[MAIN]} at 52 weeks; their days so far are on the length chart). Extra = held leg's fill-to-fill return − the peer's (T02.md §4.3), no cost. Conditions at the entry decision's close from the pair's decision-week series and N100's daily closes (N100 is the market for every pair); z, |z|, weeks since z changed sign, band width (2 sd ÷ mean of the window's closes) and breadth (the share of the ten ratios whose own z is beyond ±1) use the chosen z window. During: entry fill to exit fill (N100), and the decision weeks held (correlation and volatility need {MIN_DURING} weeks or more).</li>"
          f"<li><b>Correlation periods.</b> The legs' trailing Pearson correlation of weekly log returns on decision weeks (13, 26, 52 weeks) or of daily log returns on the pair's common trading days (20, 60, 120, 250 days), at the entry decision's close; the full window is required. The 26- and 52-week series are the conditions' corr 26 / corr 52 (checked equal), so their heat-map rows reuse those statistics; the other periods are drawn with seed default_rng([{SEED_CORR}, window_id, pool_id]). Recomputed from the history cut at 12 dates per pair ({CPIT[0]} checks, {len(CPIT[1])} violations).</li>"
          f"<li><b>Null.</b> Within each pair the trades' extras (for the rank correlation) or good/bad labels (for the medians) are shuffled {P:,} times, seed default_rng([{SEED_PERM}, window_id, pool_id]) (window_id 0 = 52 weeks, as before); the trades are ranked within their pair before pooling for the correlation. The null asks only whether the condition is associated with the outcome. Whether a filtered rule beats random timing is a new pre-registered test.</li>"
-         f"<li><b>Limits.</b> {n_idx.min()}–{n_idx.max()} closed trades per index pair; many correlated conditions; gold pairs from 2015 with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); Micro250 pairs from 2022. The design was written before the first run (explore/E03_trade_conditions/E03.md).</li></ul></div>",
+         f"<li><b>Limits.</b> {n_idx.min()}–{n_idx.max()} closed trades per index pair; many correlated conditions; all series from {LT.DATA_FROM.date()} (the first band a year later); the gold leg has an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); the liquid level has no recorded source before 2024-01-24 (F-RA-D17); Micro250 pairs from 2022 and to 2026-08-28. The design was written before the first run (explore/E03_trade_conditions/E03.md).</li></ul></div>",
          "</main>", "<script>" + E1.JS.replace("__DIV_LIGHT__", json.dumps(E1.DIV_LIGHT)).replace("__DIV_DARK__", json.dumps(E1.DIV_DARK)).replace("e01-pair", "e03-pair") + "</script></body></html>"]
     out = os.path.join(OUT, "E03_conditions.html"); open(out, "w", encoding="utf-8").write("\n".join(H))
     print(f"done in {time.time() - t0:.0f}s; notable A {nA} of {len(A_p)}, B {nB} of {len(B_p)} → {out}")

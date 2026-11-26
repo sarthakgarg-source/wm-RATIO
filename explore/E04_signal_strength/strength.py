@@ -7,6 +7,13 @@ statistics signal or mechanics?
     python explore/E04_signal_strength/strength.py [--draws 2000]
 
 Not a finding and not a test of any rule.
+
+Re-run on 2026-11-26 on the latest data (explore/E01_ratio_cycles/latest.py; E04.md, the block of that date): N100, MC100,
+SC100 and MCX gold from load_india_latest() to 2026-11-20, Micro250 on its earlier data, all from 2011-01-01. T03's
+evidence is on the earlier data, so the 52-week decisions, trades, extras and NAV are T03's rule computed here (variants.py
+through the engine's book), checked against the engine's decide() and, with the switch off, the engine's book. Sections 1
+and 5 (the strategy against 50/50) hold the liquid ETF instead of gold while gold's weekly supertrend is SELL; sections 2–4
+are about the ratio itself (no positions) and do not switch.
 """
 import argparse
 import html
@@ -25,11 +32,12 @@ from scipy.stats import rankdata
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE)); OUT = os.path.join(HERE, "out")
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_ratio_cycles"))
-from analysis.approved_data import GOLD, fingerprints, load_daily  # noqa: E402
+from analysis.approved_data import GOLD, fingerprints  # noqa: E402
 from analysis.ratio_engine import INDEX_PAIRS, PAIRS, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (E01's random paths, z-score, percentiles and the page's styling)
 import zwin as ZW  # noqa: E402  (the z windows: weekly 13 / 26 / 52, daily 20 / 60 / 120 / 250, and the daily random paths)
 import variants as V  # noqa: E402  (the rule run with each window's band through the engine's book)
+import latest as LT  # noqa: E402  (the latest data and the gold → liquid switch)
 
 TEST, RUN, WIN, EXIT, COST = "T03", "headline", 52, "E1", 20.8
 EV = os.path.join(ROOT, "tests", TEST, "evidence", RUN)
@@ -172,19 +180,24 @@ def shortfall(lr: pd.Series, tp: pd.DataFrame, dd: np.ndarray):
 # ------------------------------------------------------------------------------------------------------- the run
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--draws", type=int, default=2000); D = ap.parse_args().draws
-    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_daily()
-    audit_t = json.load(open(os.path.join(EV, "audit.json"), encoding="utf-8"))
-    decs = pd.read_csv(os.path.join(EV, "decisions.csv"), parse_dates=["date"]); decs = decs[(decs["window"] == WIN) & (decs["exit"] == EXIT)]
-    extras = pd.read_csv(os.path.join(EV, "trade_extras.csv"), parse_dates=["entry_decision"]); extras = extras[(extras["window"] == WIN) & (extras["exit"] == EXIT)]
-    summ = pd.read_csv(os.path.join(EV, "summary.csv"))
-    trs = pd.read_csv(os.path.join(EV, "trades.csv"), parse_dates=["decision_date", "trade_date"]); trs = trs[(trs["window"] == WIN) & (trs["exit"] == EXIT)]
+    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = LT.load_india(); LT.activate(px)
+    audit_t = json.load(open(os.path.join(EV, "audit.json"), encoding="utf-8"))   # T03's run date only: its evidence (earlier data) is not read
     R = {}; checks = {"z_max_abs_diff": 0.0, "rule_mismatch": [], "rule_trades_matched": 0, "zwin_daily_max_abs_diff": 0.0, "variant_rule_mismatch": []}
-    # the rule run with every window's band through the engine's book; the 52-week one must be T03 exactly
+    # the rule run with every window's band through the engine's book (the switch on the gold pairs); the 52-week one is
+    # checked against the engine's decide() and, with the switch off, the engine's book
     VAR = {(p, w): V.run_variant(px, p, w) for p in PAIRS for w, _, _, _ in ZW.WINDOWS}
     var_bad = sum((V.check_against_t03(VAR[(p, ZW.DEFAULT)]) for p in PAIRS), [])
     if var_bad:
-        sys.exit(f"E04: the 52-week variant is not T03: {var_bad}")
-    print(f"  variants: {len(VAR)} pair-window runs; the 52-week one equals T03's decisions and NAV on every pair  [{time.time() - t0:4.0f}s]", flush=True)
+        sys.exit(f"E04: the 52-week run fails its check against the engine: {var_bad}")
+    print(f"  variants: {len(VAR)} pair-window runs; the 52-week one equals the engine's decisions on every pair (and its book with the switch off)  [{time.time() - t0:4.0f}s]", flush=True)
+    # T03's evidence in its own shape, from the 52-week run on the latest data
+    V52 = {p: VAR[(p, ZW.DEFAULT)] for p in PAIRS}
+    decs = pd.concat([V52[p]["decisions"].reset_index().assign(pair=p) for p in PAIRS], ignore_index=True)
+    extras = pd.concat([V52[p]["extras"].assign(pair=p) for p in PAIRS if len(V52[p]["extras"])], ignore_index=True)
+    extras["entry_decision"] = pd.to_datetime(extras["entry_decision"]); extras["open"] = extras["open"].astype(bool)
+    trs = pd.concat([V52[p]["trades"].assign(pair=p) for p in PAIRS], ignore_index=True)
+    trs["decision_date"] = pd.to_datetime(trs["decision_date"]); trs["trade_date"] = pd.to_datetime(trs["trade_date"])
+    sw_n = {p: int(len(V52[p].get("switch_trades", []))) for p in PAIRS if V52[p].get("switched")}
     for pid, pair in enumerate(PAIRS):
         dates, P, Z, chk = paths_for(pair, pid, px, D); checks["z_max_abs_diff"] = max(checks["z_max_abs_diff"], chk); L = P.shape[1]
         # ---- 4. the rule on every row; row 0 must give T03's trades exactly
@@ -205,7 +218,7 @@ def main():
         stats_rows = []
         for row in range(D + 1):
             sl = order[cut[row]:cut[row + 1]]; stats_rows.append(trade_stats(ret[sl], wks[sl]))
-        # real trades recomputed close to close vs T03's fill-based extras (description)
+        # real trades recomputed close to close vs the 52-week run's fill-based extras (description; gold pairs: gold or the liquid ETF as held)
         r0 = order[cut[0]:cut[1]]; real_tr = pd.DataFrame({"entry_decision": [dates[t] for t in keep[r0, 1]], "ret": ret[r0], "weeks": wks[r0]})
         ex = extras[(extras["pair"] == pair) & (~extras["open"])].merge(real_tr, on="entry_decision", how="inner")
         corr_fill = float(np.corrcoef(ex["ret"], ex["extra"])[0, 1]) if len(ex) > 2 else float("nan")
@@ -261,12 +274,12 @@ def main():
         print(f"  {pair:18s} touches {int(cnt[0]):3d}  trades {stats_rows[0]['n']:3d}  [{time.time() - t0:4.0f}s]", flush=True)
     if checks["z_max_abs_diff"] > 1e-9 or checks["rule_mismatch"] or checks["zwin_daily_max_abs_diff"] > 1e-6 or checks["variant_rule_mismatch"]:   # daily running sums over ~5,000 days: float error ~1e-8
         sys.exit(f"E04 check FAILED (the paths' z or the rule copy does not match): {checks}")
-    print(f"  checks: z {checks['z_max_abs_diff']:.1e}; the rule copy reproduces all {checks['rule_trades_matched']} T03 entries")
+    print(f"  checks: z {checks['z_max_abs_diff']:.1e}; the rule copy reproduces all {checks['rule_trades_matched']} entries of the 52-week run")
 
     # ---------------------------------------------------------------- 1. outperformance
     outp, yearly = [], []
     for p in ORDER:
-        nv = pd.read_csv(os.path.join(EV, f"nav_{p.replace('|', '_')}_{WIN}_{EXIT}_{COST:g}.csv"), index_col=0, parse_dates=True)[["nav", "5050_buyhold", "hold_a", "hold_b"]].dropna()
+        nv = pd.DataFrame({"nav": V52[p]["nav"], "5050_buyhold": V52[p]["bh"]}).dropna()   # the 52-week run's book (switched on the gold pairs) and 50/50 bought once
         rel = nv["nav"] / nv["5050_buyhold"]; e = np.log(nv["nav"]).diff().dropna() - np.log(nv["5050_buyhold"]).diff().dropna()
         yrs = (nv.index[-1] - nv.index[0]).days / 365.25; cg = lambda s: (s.iloc[-1] / s.iloc[0]) ** (1 / yrs) - 1  # noqa: E731
         ye = nv.groupby(nv.index.year).last(); y0 = nv.iloc[[0]].rename(index=lambda d: d.year - 1); yy = pd.concat([y0, ye]); yr = (yy / yy.shift(1) - 1).dropna()
@@ -310,7 +323,7 @@ def main():
             sg_, sc_ = shortfall(np.log(rel), v["trades"], v["decisions"].index.to_numpy()); segw += [{"window": w, "pair": p, **x_} for x_ in sg_]; scw.append({"window": w, "pair": p, **sc_})
     OPW, YEW, SEGW, SCW = pd.DataFrame(opw), pd.DataFrame(yew), pd.DataFrame(segw), pd.DataFrame(scw)
     a_ = OPW[OPW["window"] == ZW.DEFAULT].set_index("pair")[["cagr", "ir", "rel_end"]]; b_ = OPF.set_index("pair")[["cagr", "ir", "rel_end"]]
-    assert np.allclose(a_.reindex(b_.index).to_numpy(), b_.to_numpy(), atol=1e-9), "the 52-week variant's outperformance is not T03's"
+    assert np.allclose(a_.reindex(b_.index).to_numpy(), b_.to_numpy(), atol=1e-9), "the window code's 52-week outperformance differs from section 1's"
     a_ = SCW[SCW["window"] == ZW.DEFAULT].set_index("pair")["total"]; assert np.allclose(a_.reindex(SC.set_index("pair").index).to_numpy(), SC["total"].to_numpy(), atol=1e-9)
     OPW.to_csv(os.path.join(OUT, "outperformance_windows.csv"), index=False); YEW.to_csv(os.path.join(OUT, "yearly_excess_windows.csv"), index=False)
     SEGW.to_csv(os.path.join(OUT, "shortfall_by_trade_windows.csv"), index=False); SCW.to_csv(os.path.join(OUT, "shortfall_summary_windows.csv"), index=False)
@@ -397,7 +410,10 @@ def main():
     RRW = pd.DataFrame(rrw); RRW.to_csv(os.path.join(OUT, "rule_on_random_windows.csv"), index=False)
     a_ = RRW[RRW["window"] == ZW.DEFAULT].set_index(["pair", "stat"])["real"]; assert np.allclose(a_.reindex(RRS.set_index(["pair", "stat"]).index).to_numpy(), RRS["real"].to_numpy(), equal_nan=True)
     counted = ICS["pct"].tolist() + RRS["pct"].tolist(); counted = [v for v in counted if v == v]; n_not = sum(E1.notable(v) for v in counted)
-    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "test": TEST, "test_run_date": audit_t.get("run_date"), "setting": {"window": WIN, "exit": EXIT, "cost_bps": COST},
+    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "data": LT.NOTE, "inputs": fingerprints(), "test": TEST, "test_run_date": audit_t.get("run_date"),
+             "test_evidence_read": False, "why": "T03's evidence is on the earlier data; the 52-week decisions, trades, extras and NAV are the rule computed here on the latest data",
+             "switch": {"gold_liquid_switches_52wk": sw_n, "sections_switched": "1 and 5 (and their windows); sections 2-4 are on the ratio and hold no positions"},
+             "setting": {"window": WIN, "exit": EXIT, "cost_bps": COST},
              "draws": D, "seed": f"default_rng([{E1.SEED_SIGNS}, pair_id]) (E01's signs)", "checks": checks, "notable": [n_not, len(counted)],
              "fill_vs_close": {p: {"corr": R[p]["corr_fill"], "trades": R[p]["n_fill_matched"]} for p in ORDER},
              "z_windows": {"windows": [w for w, _, _, _ in ZW.WINDOWS], "daily_seed": f"default_rng([{ZW.SEED['D']}, pair_id])", "daily_warm_up_days": ZW.BURN["D"], "ic_notable_by_window": win_notable,
@@ -412,8 +428,9 @@ def main():
             sub = sub[sub[k_] == v_]
         return sub.iloc[0]
     md = [f"# E04 results — does the ratio band have any predictive power? (EXPLORATORY)\n",
-          f"_Generated by `explore/E04_signal_strength/strength.py` on {audit['run_date']} from T03 (run {audit['test_run_date']}; window {WIN}, exit {EXIT}, {COST} bps, no maximum hold) and {D:,} random paths per pair (E01's). Description, not a finding. Percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
-          f"**Checks:** the paths' z equals E01's (max |diff| {checks['z_max_abs_diff']:.1e}); the vectorised rule reproduces all {checks['rule_trades_matched']} of T03's entries exactly. **Against chance:** {n_not} of {len(counted)} counted percentiles are notable (about {0.1 * len(counted):.0f} by chance).\n",
+          f"_Generated by `explore/E04_signal_strength/strength.py` on {audit['run_date']} with T03's rule computed here (window {WIN}, exit {EXIT}, {COST} bps, no maximum hold) and {D:,} random paths per pair (E01's). Description, not a finding. Percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
+          f"**Data:** {LT.NOTE}. Sections 1 and 5 switch the gold pairs (52 weeks: " + ", ".join(f"{nice(p)} {n} switches" for p, n in sw_n.items()) + "); sections 2–4 are about the ratio and hold no positions. T03's own evidence is on the earlier data and is not read.\n",
+          f"**Checks:** the paths' z equals E01's (max |diff| {checks['z_max_abs_diff']:.1e}); the vectorised rule reproduces all {checks['rule_trades_matched']} entries of the 52-week run exactly, whose decisions equal the engine's. **Against chance:** {n_not} of {len(counted)} counted percentiles are notable (about {0.1 * len(counted):.0f} by chance).\n",
           "## 1. Outperformance against 50/50 bought once (T03's book)\n", "| pair | window | CAGR | 50/50 | excess a year | information ratio | years ahead | worst fall of strategy ÷ 50/50 | strategy ÷ 50/50 at the end |", "|---|---|---|---|---|---|---|---|---|"]
     md += [f"| {nice(r['pair'])} | {r['first']} → {r['last']} | {r['cagr'] * 100:.1f}% | {r['cagr_5050'] * 100:.1f}% | {r['excess_cagr'] * 100:+.1f} pp | {r['ir']:+.2f} | {r['years_ahead'] * 100:.0f}% of {r['n_years']} | {r['rel_maxdd'] * 100:.0f}% | {r['rel_end']:.2f} |" for _, r in OPF.iterrows()]
     md += ["\n## 2. What follows a band touch: the signalled leg against the other, k weeks later (mean over touches; random walks' median, percentile)\n", "| pair | touches | " + " | ".join(f"{k} wk" for k in EVENT_SHOW) + " |", "|---|---|" + "---|" * len(EVENT_SHOW)]
@@ -439,8 +456,8 @@ def main():
             r_ = g(RRS, p, stat=s); f_ = (lambda v: fmt("pct", v)) if s in ("mean", "median") else ((lambda v: f"{v * 100:.0f}%") if s in ("hit", "long") else (lambda v: f"{v:.0f}" if s == "n" else f"{v:.1f}"))
             cells.append(f"{f_(r_['real'])} ({f_(r_['rw_median'])}, {pq(r_['pct'])})")
         md.append(f"| {'six index pairs' if p == 'index' else nice(p)} | " + " | ".join(cells) + " |")
-    md += ["\n_The real trades recomputed close to close against T03's fill-based extras: correlation " + ", ".join(f"{nice(p)} {R[p]['corr_fill']:.3f} ({R[p]['n_fill_matched']} trades)" for p in ORDER) + "._"]
-    md += ["\n## 1, 4 and 5 for every z window (the rule run with that window's band; decisions weekly, daily windows read at each week's last trading day; 52 weeks = T03)\n",
+    md += ["\n_The real trades recomputed close to close against the 52-week run's fill-based extras (gold pairs: gold or the liquid ETF as held): correlation " + ", ".join(f"{nice(p)} {R[p]['corr_fill']:.3f} ({R[p]['n_fill_matched']} trades)" for p in ORDER) + "._"]
+    md += ["\n## 1, 4 and 5 for every z window (the rule run with that window's band; decisions weekly, daily windows read at each week's last trading day; 52 weeks = T03's rule)\n",
            "| z window | excess a year, index pairs (range) | information ratio (range) | hit rate, pooled index pairs (random walks, pct) | mean trade (random walks, pct) | trades held over a year (random walks, pct) | index pairs: long holds' piece / the rest's |", "|---|---|---|---|---|---|---|"]
     for w, lab, f, n_ in ZW.WINDOWS:
         ox = OPW[(OPW["window"] == w) & OPW["pair"].isin(INDEX_PAIRS)]; rw_ = RRW[(RRW["window"] == w) & (RRW["pair"] == "index")].set_index("stat"); sx = SCW[(SCW["window"] == w) & SCW["pair"].isin(INDEX_PAIRS)]
@@ -598,11 +615,12 @@ def main():
          "<header class='bar'><div class='bar-inner'><b>E04 · signal strength</b><span class='tag'>EXPLORATORY</span>",
          f"<label>Pair <select id='pair'>{opts}</select></label>{ZW.select_html()}<button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>Does the ratio band have any predictive power?</h1>",
+         f"<p class='note'><b>Data:</b> {html.escape(LT.NOTE)}. Sections 1 and 5 switch the gold pairs (52 weeks: " + ", ".join(f"{nice(p)} {n} switches" for p, n in sw_n.items()) + "); sections 2–4 are about the ratio and hold no positions.</p>",
          f"<p>Four looks at T03 — the ±1 sd first-touch switch on the plain ratio, exit at the trailing mean, no maximum hold (window {WIN}, exit {EXIT}, {COST} bps), refuted against random timing. "
          f"<b>1.</b> Its outperformance against 50/50 over time. <b>2.</b> What follows a touch of the band. <b>3.</b> Whether the z-score ranks future relative returns at all. <b>4.</b> The same rule run on {D:,} random walks per pair (E01's: each ratio's own week-by-week volatility and point-in-time drift, no swing-back), to see whether its trade statistics are signal or mechanics. "
-         f"Generated {audit['run_date']} from the approved data of 2026-11-12 and T03's evidence (run {audit['test_run_date']}). <b>Description, not a finding.</b></p>",
+         f"Generated {audit['run_date']} from the latest data (the note above); T03's own evidence is on the earlier data and is not read. <b>Description, not a finding.</b></p>",
          "<div class='card'>" + win_divs({w: summary_par(w) for w, _, _, _ in ZW.WINDOWS}) + "</div>",
-         "<p class='note'><b>The z window dropdown at the top changes every section:</b> sections 1, 4 and 5 run the same rule with that window's band (first touch of ±1, exit at the trailing mean, no maximum hold, 20.8 bps, the engine's own book; decisions weekly, daily windows read at each week's last trading day); 52 weeks is T03. Sections 2 and 3 describe the z-score itself for that window.</p>",
+         "<p class='note'><b>The z window dropdown at the top changes every section:</b> sections 1, 4 and 5 run the same rule with that window's band (first touch of ±1, exit at the trailing mean, no maximum hold, 20.8 bps, the engine's own book; decisions weekly, daily windows read at each week's last trading day; on the gold pairs the liquid ETF replaces gold while gold's weekly supertrend is SELL); 52 weeks is T03's rule. Sections 2 and 3 describe the z-score itself for that window.</p>",
          "<h2>1 · Outperformance against 50/50</h2><div class='card'>" + win_divs({w: E1.tbl(["pair", "window", "CAGR", "50/50 bought once", "excess a year", "information ratio", "years ahead", "worst fall of strategy ÷ 50/50"], rows_) for w, rows_ in o_rows_w.items()}) + "</div>",
          per_pair("op", figs["op"], tab_op, first=True),
          "<h2>2 · What follows a touch of the band (signal strength)</h2><p class='note'>Every first touch, traded or not. Blue: the signalled leg's return against the other, on average, k weeks later. Grey: the same on random walks. The rule makes money only if the blue line runs above the grey band. <b>The z window dropdown at the top</b> switches sections 2 and 3 between the 52-week band (T03's) and shorter weekly and daily windows; daily windows use daily closes and daily random walks.</p>",
@@ -628,10 +646,10 @@ def main():
          per_win("sf_all", figs["sf_all"]),
          "<h2>Method and limits</h2><div class='card'><ul>"
          f"<li><b>Paths.</b> E01's random walks: each pair's real first {E1.BURN + 1} weeks, then the point-in-time weekly residuals with E01's random signs (seed default_rng([{E1.SEED_SIGNS}, pair_id])) plus the expanding drift; z = (ratio − trailing 52-week mean) ÷ trailing sd on every path (row 0 equals E01's z to {checks['z_max_abs_diff']:.0e}).</li>"
-         f"<li><b>The rule copy.</b> Vectorised over the paths; on the real ratio it reproduces all {checks['rule_trades_matched']} of T03's entries (date and leg) exactly, so the random walks run the identical rule. Relative return of a trade = ln(r_exit ÷ r_entry) for long a, the negative for long b, decision close to decision close; against T03's fill-based extras the correlation is " + ", ".join(f"{R[p]['corr_fill']:.2f}" for p in INDEX_PAIRS) + " on the index pairs.</li>"
-         "<li><b>The windows' rules.</b> analysis/ratio_engine.py's book, comparators and trade_extras, run on the rule's weekly decisions for each window (explore/E01_ratio_cycles/variants.py); the 52-week run equals T03's decisions and NAV on every pair (checked each run), and on the real ratio the vectorised rule reproduces every window's entries.</li>"
+         f"<li><b>The rule copy.</b> Vectorised over the paths; on the real ratio it reproduces all {checks['rule_trades_matched']} entries of the 52-week run (date and leg) exactly, so the random walks run the identical rule. Relative return of a trade = ln(r_exit ÷ r_entry) for long a, the negative for long b, decision close to decision close; against the 52-week run's fill-based extras the correlation is " + ", ".join(f"{R[p]['corr_fill']:.2f}" for p in INDEX_PAIRS) + " on the index pairs.</li>"
+         "<li><b>The windows' rules.</b> analysis/ratio_engine.py's book, comparators and trade_extras, run on the rule's weekly decisions for each window (explore/E01_ratio_cycles/variants.py); on the latest data the 52-week run's decisions equal the engine's decide() and, on the gold pairs with the switch off, its book equals the engine's (checked each run); with the switch on, a week whose decision falls in gold's weekly supertrend SELL holds the liquid ETF in place of gold, at the next session's fill, 10.4 bps per side; 50/50 bought once is not switched; and on the real ratio the vectorised rule reproduces every window's entries.</li>"
          "<li><b>Outperformance.</b> the daily NAV against 50/50 bought once; information ratio = annualised mean ÷ annualised sd of the daily excess log return; calendar years with the first year from the start date.</li>"
-         "<li><b>Limits.</b> Everything here is after the fact; the paths keep each ratio's volatility and drift and remove any swing-back; gold pairs from 2015 with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); Micro250 pairs from 2022 (few touches). The design was written before the first run (explore/E04_signal_strength/E04.md).</li></ul></div>",
+         "<li><b>Limits.</b> Everything here is after the fact; the paths keep each ratio's volatility and drift and remove any swing-back; all series from " + str(LT.DATA_FROM.date()) + " (the first band a year later); the gold leg has an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); the liquid level has no recorded source before 2024-01-24 (F-RA-D17); Micro250 pairs from 2022 and to 2026-08-28 (few touches). The design was written before the first run (explore/E04_signal_strength/E04.md).</li></ul></div>",
          "</main>", "<script>" + E1.JS.replace("__DIV_LIGHT__", json.dumps(E1.DIV_LIGHT)).replace("__DIV_DARK__", json.dumps(E1.DIV_DARK)).replace("e01-pair", "e04-pair") + "</script></body></html>"]
     out = os.path.join(OUT, "E04_signal.html"); open(out, "w", encoding="utf-8").write("\n".join(H))
     print(f"done in {time.time() - t0:.0f}s; notable {n_not} of {len(counted)} → {out}")

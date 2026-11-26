@@ -27,6 +27,7 @@ sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "explore", "E01_
 from analysis.approved_data import fingerprints, load_daily  # noqa: E402
 from analysis.ratio_engine import PAIRS, pair_frame  # noqa: E402
 import cycles as E1  # noqa: E402  (E01's point-in-time zig-zag for the cross-check, and the page's styling)
+import latest as LT  # noqa: E402  (the latest data, 2026-11-26)
 
 M_GRID = (1, 2, 3, 4, 5)                 # prominence multiplier; 5 = the code's default
 T_GRID = (0.05, 0.10, 0.20)              # trend threshold, % a year; merge threshold = T / 2
@@ -133,7 +134,7 @@ def agreement(piv_dates, e01, start):
 
 # ------------------------------------------------------------------------------------------------ the run
 def main():
-    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_daily(); R = {}
+    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = LT.load_india(); LT.activate(px); R = {}
     for pid, pair in enumerate(PAIRS):
         pf = pair_frame(px, pair, "plain"); s = pf["ratio"]; dates = s.index
         lv = (s / s.iloc[0] * 100).to_numpy(); lnr = np.log(s.to_numpy()); ty = ((dates - dates[0]).days / 365.25).to_numpy()
@@ -178,7 +179,7 @@ def main():
     near_roll = [f"{nice(p)} {R[p]['s'].index[i].date()} {t}" for p in ORDER if "GoldMCX" in p for i, t in R[p]["grid"][REF]["piv"] if abs((R[p]["s"].index[i] - roll).days) <= 5]
     code_all_side = sum(1 for p in ORDER for sg in R[p]["code"]["segs"] if sg["state"] == "sideways"); code_all = sum(len(R[p]["code"]["segs"]) for p in ORDER)
     code_max_angle = max((abs(sg["key"]) for p in ORDER for sg in R[p]["code"]["segs"]), default=float("nan"))
-    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY, HINDSIGHT", "inputs": fingerprints(), "pairs": PAIRS, "series": "plain ratio P_a / P_b, daily close on the pair's common calendar (pair_frame)",
+    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY, HINDSIGHT", "data": LT.NOTE, "inputs": fingerprints(), "pairs": PAIRS, "series": "plain ratio P_a / P_b, daily close on the pair's common calendar (pair_frame)",
              "method_source": "wm-strategy-analytics market_segregation/scipy_peak_finding/market_segments.py and parameters.py (read 2026-11-16), re-implemented",
              "grid": {"m": M_GRID, "T_per_year": T_GRID, "merge": "T / 2", "min_segment_rows": MIN_SEG}, "reference": {"m": REF[0], "T": REF[1]}, "code_exact": CODE,
              "code_exact_result": {"segments": code_all, "sideways": code_all_side, "max_abs_angle_deg": code_max_angle}, "cross_check_days": MATCH_DAYS, "turning_points_near_gold_roll": near_roll,
@@ -243,7 +244,7 @@ def main():
     fB.update_yaxes(tickvals=[0, 1], ticktext=["E01 zig-zag", "E02 prominence"], range=[-0.6, 1.6], showgrid=False)
     figB = E1.style(fB, titles["x"][DEFAULT_PAIR], 300, legend_top=True, left=120)
     # all pairs: state timeline, reference setting, month-end sampling
-    months = pd.date_range("2006-01-31", "2026-08-31", freq="ME"); zz, hv = [], []
+    months = pd.date_range(min(R[p]["s"].index[0] for p in ORDER) + pd.offsets.MonthEnd(0), max(R[p]["s"].index[-1] for p in ORDER) + pd.offsets.MonthEnd(0), freq="ME"); zz, hv = [], []
     for p in ORDER:
         r = R[p]; d = r["s"].index; st = pd.Series(np.nan, index=d)
         for sg in r["grid"][REF]["segs"]:
@@ -272,7 +273,7 @@ def main():
     H = [E1.PAGE_HEAD.replace("<title>Ratio cycles</title>", "<title>Ratio segments</title>").replace("__CSS__", E1.CSS + ".warn{border-left:4px solid #e34948}"),
          "<header class='bar'><div class='bar-inner'><b>E02 · ratio segments</b><span class='tag'>HINDSIGHT</span><span class='tag'>EXPLORATORY</span>",
          f"<label>Pair <select id='pair'>{opts}</select></label><button id='theme' type='button'>Dark</button></div></header><main>",
-         "<h1>Where are the peaks, troughs and trends of the ratio series?</h1>",
+         "<h1>Where are the peaks, troughs and trends of the ratio series?</h1>", f"<p class='note'><b>Data:</b> {html.escape(LT.NOTE)}.</p>",
          f"<p>The desk's market-segregation method — scipy topographic prominence to find the significant peaks and troughs, then a regression between consecutive turning points to call each stretch up, down or sideways — applied to the ten daily ratios P_a ÷ P_b. Generated {audit['run_date']} from the approved data of 2026-11-12. Reference setting: prominence multiplier m = {REF[0]}, trend threshold T = {REF[1]:.0%} a year, chosen as the middle of the grid before the run.</p>",
          "<div class='card warn'><p style='margin:4px 0'><b>Hindsight, by design.</b> A peak's prominence depends on how far the ratio falls <i>after</i> it; the filter compares it with the average of all peaks; a peak is kept only if it beats the next one; each trend line spans its whole segment. So every turning point and segment here is drawn with knowledge of what came later — a description of the past, never a signal, and the latest segment can still change as data is added. E01's zig-zag is the point-in-time counterpart; the cross-check below compares them.</p></div>",
          f"<div class='card'><p style='margin:4px 0'><b>Why the trend is in % a year:</b> the code calls a stretch a trend when its regression line on the series rebased to 100 is steeper than ±30° — 145 points a year on daily data, a pace no ratio reaches. Run exactly as written it labels <b>{code_all_side} of {code_all}</b> segments across the ten pairs sideways (steepest {code_max_angle:.1f}°). Here the line is fitted to ln(ratio) against time, so its slope is the stretch's trend in % a year at any level; up beyond +T, down beyond −T, and neighbours within T ÷ 2 merge.</p></div>",

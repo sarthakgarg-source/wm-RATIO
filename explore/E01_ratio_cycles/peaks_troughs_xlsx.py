@@ -22,6 +22,7 @@ sys.path.insert(0, ROOT); sys.path.insert(0, HERE)
 from analysis.approved_data import load_daily  # noqa: E402
 from analysis.ratio_engine import pair_frame  # noqa: E402
 import cycles as E  # noqa: E402  (the same point_in_time and zigzag functions the page uses)
+import latest as LT  # noqa: E402  (the latest data, 2026-11-26)
 
 PAIR = "N100|SC100"
 F_BASE, F_BOLD, F_TITLE = Font(name="Arial", size=10), Font(name="Arial", size=10, bold=True), Font(name="Arial", size=14, bold=True)
@@ -82,7 +83,7 @@ def how_it_works(wb, n_weeks, first, last):
         ("→", "Turning points: the list Excel finds, with each swing's length and size, matched row by row against the Python script (explore/E01_ratio_cycles/cycles.py). The cell at the top says whether they agree."),
         ("", ""),
         ("", "COLOURS: blue text = inputs (data, settings); black = formulas; yellow = settings you can change (warm-up, half-year length, toy threshold)."),
-        ("", "Source of the data: data/index_ohlcv_all.csv through analysis/approved_data.load_daily() (fingerprint-checked), on the pair's common calendar as T02/T03 use it."),
+        ("", "Source of the data: the desk's latest index series (data/aa_index_*.csv, approved 2026-11-26) through analysis/approved_data.load_india_latest() (fingerprint-checked), from 2011-01-01, on the pair's common calendar as T02/T03 build it."),
     ]
     for i, (a, b) in enumerate(lines, start=3):
         ws[f"A{i}"] = a; ws[f"B{i}"] = b; ws[f"B{i}"].alignment = WRAP
@@ -151,7 +152,7 @@ def real(wb, wk, ca, cb):
     ws = wb.create_sheet("Real data")
     n = len(wk); r0 = 8; rN = r0 + n - 1; WARM, HALF = "$B$3", "$B$4"
     ws["A1"] = f"Real data: {E.nice(PAIR)}, weekly, {wk.index[0].date()} → {wk.index[-1].date()}"; ws["A1"].font = F_TITLE
-    ws["A2"] = ("Source: data/index_ohlcv_all.csv via analysis/approved_data.load_daily() (fingerprint-checked); closes on the last trading day of each ISO week on the pair's "
+    ws["A2"] = ("Source: the latest index series (data/aa_index_*.csv) via analysis/approved_data.load_india_latest() (fingerprint-checked), from 2011-01-01; closes on the last trading day of each ISO week on the pair's "
                 "common calendar, exactly as T02/T03 and E01 use them. Blue = input; every other number is a formula."); ws["A2"].font = F_NOTE
     ws["A3"] = "Warm-up (weeks)"; ws["B3"] = E.BURN; ws["A4"] = "Weeks in a half-year (threshold = sd × √ of this)"; ws["B4"] = E.H_WEEKS
     for c in ("B3", "B4"):
@@ -268,7 +269,7 @@ def turning(wb, r0, rN, ref):
 
 
 def main():
-    px = load_daily(); pf = pair_frame(px, PAIR, "plain"); d = pf[pf["decision"]]; wk, ca, cb = d["ratio"], d["ca"], d["cb"]
+    px = LT.load_india(); LT.activate(px); pf = pair_frame(px, PAIR, "plain"); d = pf[pf["decision"]]; wk, ca, cb = d["ratio"], d["ca"], d["cb"]
     # the Python reference: the same point_in_time + zigzag that cycles.py runs
     g = np.diff(np.log(wk.to_numpy())); _, _, _, z, hx = E.point_in_time(g)
     tps = E.zigzag(np.concatenate([[0.0], np.cumsum(z)]).tolist(), hx.tolist())

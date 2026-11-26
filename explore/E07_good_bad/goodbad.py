@@ -6,6 +6,11 @@ Design: explore/E07_good_bad/E07.md (written before the first run).
 
 Every number on the page and in E07_results.md is computed here; the page's script only picks the numbers of the chosen
 controls from the embedded results and draws them. Not a finding and not a test of any rule.
+
+Re-run on 2026-11-26 on the latest data (explore/E01_ratio_cycles/latest.py; E07.md, the block of that date): N100, MC100,
+SC100 and MCX gold from load_india_latest() to 2026-11-20, Micro250 on its earlier data, all from 2011-01-01; on the gold
+pairs every version of the rule holds the liquid ETF instead of gold while gold's weekly supertrend is SELL. The split is
+E06's (2019-01-01); the walk-forward starts on 2015-01-01, four years after the data's start as 2010 was after 2006.
 """
 import argparse
 import html
@@ -25,13 +30,14 @@ from sklearn.metrics import roc_auc_score
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE)); OUT = os.path.join(HERE, "out")
 for p_ in (ROOT, os.path.join(ROOT, "explore", "E01_ratio_cycles"), os.path.join(ROOT, "explore", "E03_trade_conditions"), os.path.join(ROOT, "explore", "E06_trade_search")):
     sys.path.insert(0, p_)
-from analysis.approved_data import GOLD, fingerprints, load_daily  # noqa: E402
+from analysis.approved_data import GOLD, fingerprints  # noqa: E402
 from analysis.ratio_engine import PAIRS, PIT, book, pair_frame, trade_extras  # noqa: E402
 import cycles as E1  # noqa: E402  (palette, page styling, percentile)
 import zwin as ZW  # noqa: E402  (the z windows)
 import variants as VR  # noqa: E402  (the rule through the engine's book)
 import conditions as E3  # noqa: E402  (the z-window conditions)
 import search as E6  # noqa: E402  (E06's condition frame and statistics)
+import latest as LT  # noqa: E402  (the latest data and the gold → liquid switch)
 
 MEAS = (("eff26", "path efficiency, 26 weeks (1 = a straight line)", "efficiency 26 wk"), ("eff52", "path efficiency, 52 weeks", "efficiency 52 wk"),
         ("cross104", "times z changed sign, last 104 weeks", "z sign changes 104 wk"), ("ac104", "autocorrelation of weekly changes, 104 weeks", "autocorrelation 104 wk"),
@@ -43,7 +49,7 @@ VARS = (("base", "Rule R (first touch, exit at 0)", {}), ("zs20", "z-stop at ±2
         ("ts13", "time stop, 13 weeks", {"tstop": 13}), ("ts26", "time stop, 26 weeks", {"tstop": 26}), ("ts52", "time stop, 52 weeks", {"tstop": 52}),
         ("recross", "enter on the re-cross into the band", {"entry": "recross"}), ("rebound", "enter after a 0.5 rebound from the extreme", {"entry": "rebound"}))
 KS = (4, 8, 13, 26); HORIZON = 52; DEEPER = 0.5
-SPLIT = E6.SPLIT; WF_START = pd.Timestamp("2010-01-01"); YEARS = list(range(2010, 2027))
+SPLIT = E6.SPLIT; WF_START = pd.Timestamp("2015-01-01"); YEARS = list(range(2015, 2027))   # the latest data: four years after the start (2011), as 2010 was after 2006
 SEED_UNI, SEED_NULL, SEED_RND = 120, 121, 122
 COST = VR.COST; ORDER = E1.ORDER; nice = E1.nice; DEFAULT_PAIR = E1.DEFAULT_PAIR; LO, HI = E1.LO, E1.HI
 POOL = {p: ("gold" if GOLD in p else "index") for p in PAIRS}; INDEX_PAIRS = [p for p in PAIRS if POOL[p] == "index"]
@@ -127,6 +133,9 @@ def states_v(z, thr=1.0, zstop=None, tstop=None, entry="first", reb=0.5):
 
 def run_targets(pf, z, states):
     dec = pd.Series(states, index=z.index)[z.notna().to_numpy()]
+    if VR.SWITCH is not None and VR.SWITCH.is_gold_pair(pf):   # the latest data: the gold → liquid switch on a gold pair (variants.book3)
+        nav, _, extras, _ = VR.book3(pf, dec.index, dec.tolist(), VR.SWITCH.sell_at(dec.index), VR.SWITCH.liquid_on(pf.index), COST)
+        return nav, pd.DataFrame(extras)
     nav, trades = book(pf, dec.index, dec.tolist(), COST, PIT(), record_trades=True)
     return nav, pd.DataFrame(trade_extras(trades))
 
@@ -135,8 +144,8 @@ def vstats(nav, ex, bh):
     cl = ex[~ex["open"].astype(bool)] if len(ex) else ex
     full = E6.run_stats(nav, bh); v = E6.run_stats(nav, bh, SPLIT)
     return {"trades": int(len(cl)), "open": int(ex["open"].astype(bool).sum()) if len(ex) else 0, "win": float((cl["extra"] > 0).mean()) if len(cl) else np.nan,
-            "mean_extra": float(cl["extra"].mean()) if len(cl) else np.nan, "cagr": full["cagr"], "cagr_5050": full["cagr_5050"], "excess": full["excess"], "excess_1626": v["excess"],
-            "maxdd": float((nav / nav.cummax() - 1).min()), "first": full["first"], "last": full["last"], "first_1626": v["first"]}
+            "mean_extra": float(cl["extra"].mean()) if len(cl) else np.nan, "cagr": full["cagr"], "cagr_5050": full["cagr_5050"], "excess": full["excess"], "excess_val": v["excess"],
+            "maxdd": float((nav / nav.cummax() - 1).min()), "first": full["first"], "last": full["last"], "first_val": v["first"]}
 
 
 # ------------------------------------------------------------------------------------------------------- §5 the models
@@ -184,10 +193,11 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--perms", type=int, default=2000); ap.add_argument("--null-lr", type=int, default=200)
     ap.add_argument("--null-gb", type=int, default=100); ap.add_argument("--rnd", type=int, default=200); a_ = ap.parse_args()
     P, NLR, NGB, RND = a_.perms, a_.null_lr, a_.null_gb, a_.rnd
-    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_daily(); mkt = px["N100"]["close"].astype(float)
+    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = LT.load_india(); LT.activate(px); mkt = px["N100"]["close"].astype(float)
     checks = {"t03_mismatch": [], "e06_trades_unmatched": None, "e06_max_abs_diff": None, "states_base_mismatch": [], "base_nav_mismatch": [], "cut_checks": 0, "cut_violations": [],
               "train_trades_closed_before_year": True, "random_rate_max_abs_dev": 0.0}
     pfs = {p: pair_frame(px, p, "plain") for p in PAIRS}
+    VLAB = f"{SPLIT.year}–{max(pfs[p].index[-1] for p in PAIRS).year}"   # the validation years, e.g. 2019–2026
     zall = {w: {p: E3.zcond(pfs[p], w)["z"].dropna() for p in PAIRS} for w, *_ in ZW.WINDOWS}
     frames, chars, zser, runs, rows, paths, VROWS = {}, {}, {}, {}, [], [], []
     for pair in PAIRS:
@@ -222,6 +232,10 @@ def main():
                 VROWS.append({"pair": pair, "pool": POOL[pair], "window": w, "variant": vk, **vstats(nav, ex, bh)})
         print(f"  {pair:18s} [{time.time() - t0:4.0f}s]", flush=True)
     TR = pd.DataFrame(rows); TR["good"] = TR["extra"] > 0
+    nav0 = {p: min(runs[(p, w)]["nav"].index[0] for w, *_ in ZW.WINDOWS) for p in PAIRS}; navT = {p: runs[(p, ZW.DEFAULT)]["nav"].index[-1] for p in PAIRS}
+    MIC = [p for p in PAIRS if "Micro250" in p]; IXN = [p for p in INDEX_PAIRS if p not in MIC]; GDN = [p for p in PAIRS if POOL[p] == "gold" and p not in MIC]
+    SPANLAB = (f"index pairs from the first day of the rule in {min(nav0[p] for p in IXN).year} (Micro250: {min(nav0[p] for p in MIC).year}), gold pairs from {min(nav0[p] for p in GDN).year}, "
+               f"to {max(navT.values()).date()} (Micro250 pairs to {max(navT[p] for p in MIC).date()})")
     PATH = pd.DataFrame(paths, columns=[f"s{k}" for k in range(HORIZON + 1)] + [f"x{k}" for k in range(1, HORIZON + 1)])
     # checks: the trades and conditions are E06's; the base state machine and book are the rule's; the measures are point in time
     e6 = pd.read_csv(os.path.join(ROOT, "explore", "E06_trade_search", "out", "trades_all.csv"))
@@ -293,9 +307,9 @@ def main():
         VSUM[w] = {}; base_ = vix[(vix["window"] == w) & (vix["variant"] == "base")].set_index("pair")
         for vk, *_ in VARS:
             v_ = vix[(vix["window"] == w) & (vix["variant"] == vk)].set_index("pair").reindex(base_.index)
-            VSUM[w][vk] = [int((v_["excess"] > base_["excess"]).sum()), int((v_["excess_1626"] > base_["excess_1626"]).sum()), int((v_["excess"] > 0).sum()), int((v_["excess_1626"] > 0).sum()),
-                           r6(v_["excess"].mean()), r6(v_["excess_1626"].mean()), r6(v_["win"].mean()), int(v_["trades"].sum())]
-    VALL = {vk: [sum(VSUM[w][vk][i] for w in VSUM) for i in range(4)] + [r6(vix[vix["variant"] == vk]["excess"].median()), r6(vix[vix["variant"] == vk]["excess_1626"].median())] for vk, *_ in VARS}
+            VSUM[w][vk] = [int((v_["excess"] > base_["excess"]).sum()), int((v_["excess_val"] > base_["excess_val"]).sum()), int((v_["excess"] > 0).sum()), int((v_["excess_val"] > 0).sum()),
+                           r6(v_["excess"].mean()), r6(v_["excess_val"].mean()), r6(v_["win"].mean()), int(v_["trades"].sum())]
+    VALL = {vk: [sum(VSUM[w][vk][i] for w in VSUM) for i in range(4)] + [r6(vix[vix["variant"] == vk]["excess"].median()), r6(vix[vix["variant"] == vk]["excess_val"].median())] for vk, *_ in VARS}
     print(f"  §3 early warning and variants [{time.time() - t0:4.0f}s]", flush=True)
 
     # ---------------------------------------------------------------- §5 walk-forward
@@ -329,7 +343,7 @@ def main():
         WFROWS += [{"model": kind, "pool": "index", "year": Y, "auc": a, "n": n, "train_trades": nt} for Y, a, n, nt in yrs]
         print(f"  §5 {mlab}: AUC {a_ix:.3f} (percentile {pct:.1f} among {NN} label shuffles), gold {a_g:.3f}  [{time.time() - t0:4.0f}s]", flush=True)
     WFT.to_csv(os.path.join(OUT, "walkforward_trades.csv"), index=False); pd.DataFrame(WFROWS).to_csv(os.path.join(OUT, "walkforward_summary.csv"), index=False)
-    # the models as entry filters, index pairs, from 2010-01-01
+    # the models as entry filters, index pairs, from WF_START
     FROWS, FILT = [], {}
     for mi, kind in enumerate(("lr", "gb")):
         FILT[kind] = {}
@@ -358,7 +372,7 @@ def main():
                    "above_random_median": int((g["pct"] > 50).sum()), "notable": int((g["pct"] >= HI).sum()), "median_pct": r4(g["pct"].median(), 1), "n": int(len(g))} for kind, g in FD.groupby("model")}
 
     # ---------------------------------------------------------------- audit
-    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "perms": P, "null_draws": {"lr": NLR, "gb": NGB}, "random_filters": RND,
+    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "data": LT.NOTE, "split": SPLIT.date().isoformat(), "walkforward_start": WF_START.date().isoformat(), "inputs": fingerprints(), "perms": P, "null_draws": {"lr": NLR, "gb": NGB}, "random_filters": RND,
              "seeds": {"measures": f"default_rng([{SEED_UNI}, window_id, measure_id])", "walkforward_null": f"default_rng([{SEED_NULL}, model_id, draw])", "random_filters": f"default_rng([{SEED_RND}, model_id, pair_id, window_id, draw])"},
              "checks": checks, "trades": int(len(TR)), "closed": int(len(CL)), "walkforward": {k: {kk: v[kk] for kk in ("auc", "pct", "null_med", "null_hi", "n_ix", "n_gold")} for k, v in WF.items()},
              "filters": FSUM, "variants_all_windows": VALL, "seconds": round(time.time() - t0)}
@@ -371,13 +385,14 @@ def main():
     def pp(v): return "—" if v is None or v != v else f"{v * 100:+.2f} pp"
     vlab = {v[0]: v[1] for v in VARS}; mlab_ = {m[0]: m[2] for m in MEAS}
     md = [f"# E07 results — good and bad trades (EXPLORATORY)\n",
-          f"_Generated by `explore/E07_good_bad/goodbad.py` on {audit['run_date']} from the approved data of 2026-11-12. Rule R (T03's rule, ±1, exit at 0) on every z window, all ten pairs: {len(TR)} trades ({len(CL)} closed), E06's exactly. Good = extra > 0 (held − peer, fill to fill, before costs). Description, not a finding; percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
-          f"**Checks:** the trades and E06's 24 conditions equal E06's (max difference {checks['e06_max_abs_diff']:.1e}); the 52-week run is T03; the variants' state machine with no added rule is Rule R's and its book gives Rule R's NAV on every pair and window; the six measures pass the cut-history check ({checks['cut_checks']} cuts, 0 violations); every walk-forward training trade closed before its year; random filters keep their rate (largest deviation {checks['random_rate_max_abs_dev']:.4f}).\n"]
+          f"_Generated by `explore/E07_good_bad/goodbad.py` on {audit['run_date']} from the latest data. Rule R (T03's rule, ±1, exit at 0) on every z window, all ten pairs: {len(TR)} trades ({len(CL)} closed), E06's exactly. Good = extra > 0 (held − peer, fill to fill, before costs). Description, not a finding; percentiles in **bold** are notable (≤ {LO:g} or ≥ {HI:g})._\n",
+          f"**Data:** {LT.NOTE}. On the gold pairs every variant switches too, and a gold trade's extra uses what was held (gold or the liquid ETF); section 1's paths use the legs' own closes. Split {SPLIT.date()} (E06's); walk-forward from {WF_START.date()}.\n",
+          f"**Checks:** the trades and E06's 24 conditions equal E06's (max difference {checks['e06_max_abs_diff']:.1e}); the 52-week run has the engine's decisions (and, on the gold pairs with the switch off, the engine's book); the variants' state machine with no added rule is Rule R's and its book gives Rule R's NAV on every pair and window; the six measures pass the cut-history check ({checks['cut_checks']} cuts, 0 violations); every walk-forward training trade closed before its year; random filters keep their rate (largest deviation {checks['random_rate_max_abs_dev']:.4f}).\n"]
     md += ["## 1. Good and bad trades side by side (index pairs)\n", "| z window | good / bad trades | median weeks held | median \\|z\\| at entry | median deepest \\|z\\| while open | median extra |", "|---|---|---|---|---|---|"]
     for w, *_ in ZW.WINDOWS:
         h = HOLD[w]["index"]; md.append(f"| {WLAB[w]} ({h[10]} → {h[11]}) | {h[0]} / {h[1]} | {h[2]} / {h[3]} | {h[4]} / {h[5]} | {h[6]} / {h[7]} | {fp(h[8])} / {fp(h[9])} |")
     md += [f"\n## 2. The ratio's character at entry: rank correlation with the extra, within each pair (percentile among {P:,} shuffles)\n",
-           "| measure | " + " | ".join(WLAB[w] for w, *_ in ZW.WINDOWS) + " | all windows | before 2016 / from 2016 | gold pairs | all windows: mean extra low / middle / high third |", "|---|" + "---|" * (len(ZW.WINDOWS) + 4)]
+           "| measure | " + " | ".join(WLAB[w] for w, *_ in ZW.WINDOWS) + f" | all windows | before {SPLIT.year} / from {SPLIT.year} | gold pairs | all windows: mean extra low / middle / high third |", "|---|" + "---|" * (len(ZW.WINDOWS) + 4)]
     for k in MKEYS:
         cells = []
         for w, *_ in ZW.WINDOWS:
@@ -393,15 +408,15 @@ def main():
                 continue
             md.append(f"| {WLAB[w]} | {k} | {e[0]} | {e[1]}, {pc(e[2])}, {fp(e[3])} | {e[4]}, {pc(e[5])}, {fp(e[6])} | {e[7]}, {pc(e[8])}, {fp(e[9])} | {pc(e[10])} / {pc(e[11])} |")
     md += ["\n## 3b–4. Exits and entries: the six index pairs, all seven windows (42 pair-windows)\n",
-           "| variant | pair-windows ahead of Rule R: whole window / 2016–2026 | ahead of 50/50: whole window / 2016–2026 | median excess over 50/50: whole window / 2016–2026 |", "|---|---|---|---|"]
+           f"| variant | pair-windows ahead of Rule R: whole window / {VLAB} | ahead of 50/50: whole window / {VLAB} | median excess over 50/50: whole window / {VLAB} |", "|---|---|---|---|"]
     for vk, *_ in VARS:
         v = VALL[vk]; md.append(f"| {vlab[vk]} | {'—' if vk == 'base' else str(v[0]) + ' / ' + str(v[1])} | {v[2]} / {v[3]} | {pp(v[4])} / {pp(v[5])} |")
-    md += [f"\n_Index pairs from 2006 (the rule's first day depends on the window) or 2022 (Micro250) to 2026-08-28; 2016–2026 = from 2016-01-01. Every pair, window and variant: `out/variants.csv`._\n"]
+    md += [f"\n_{SPANLAB}; {VLAB} = from {SPLIT.date()}. Every pair, window and variant: `out/variants.csv`._\n"]
     md += [f"\n## 5. Walk-forward: trained on trades closed before each year, predicting the trades entered that year ({WF['lr']['first']} → {WF['lr']['last']})\n",
            "| model | AUC, index pairs (percentile among label shuffles; shuffles' median / 95th) | predicted above the training median: trades, mean extra, worked | below | gold pairs: AUC; above / below mean extra |", "|---|---|---|---|---|"]
     for kind in ("lr", "gb"):
         v = WF[kind]; md.append(f"| {v['label']} | {v['auc']:.3f} ({pq(v['pct'])}; {v['null_med']:.3f} / {v['null_hi']:.3f}) | {v['ix'][0]}, {fp(v['ix'][1])}, {pc(v['ix'][2])} | {v['ix'][3]}, {fp(v['ix'][4])}, {pc(v['ix'][5])} | {v['gold'][0]:.3f}; {fp(v['gold'][2])} / {fp(v['gold'][5])} |")
-    md += ["\n**As entry filters** (six index pairs × seven windows, excess CAGR over 50/50 from 2010-01-01; random = 200 filters at the model's own entry rate):\n",
+    md += ["\n**As entry filters** (six index pairs × seven windows, excess CAGR over 50/50 from " + WF_START.date().isoformat() + "; random = 200 filters at the model's own entry rate):\n",
            "| model | pair-windows where the filter beats every entry | ahead of 50/50 (every entry) | above the random median (notable ≥ 95) | median percentile |", "|---|---|---|---|---|"]
     for kind in ("lr", "gb"):
         s = FSUM[kind]; md.append(f"| {WF[kind]['label']} | {s['beats_every']} of {s['n']} | {s['ahead_5050']} ({s['every_ahead_5050']}) | {s['above_random_median']} ({s['notable']}) | {s['median_pct']} |")
@@ -413,11 +428,11 @@ def main():
         UNJ.setdefault(r["window"], {}).setdefault(r["pool"], {})[r["key"]] = [r6(r["rho"]), r4(r["pct"], 3), r6(r["rho_D"]), r6(r["rho_V"]), int(r["n"]), r6(r["mean_lo"]), r6(r["mean_mid"]), r6(r["mean_hi"]), r6(r["win_lo"]), r6(r["win_mid"]), r6(r["win_hi"])]
     VJ, VW = {}, {}
     for _, r in VA.iterrows():
-        VJ.setdefault(r["pair"], {}).setdefault(r["window"], {})[r["variant"]] = [r["trades"], r6(r["win"]), r6(r["mean_extra"]), r6(r["cagr"]), r6(r["excess"]), r6(r["excess_1626"]), r6(r["maxdd"]), r6(r["cagr_5050"]), r["open"]]
-        VW.setdefault(r["pair"], {})[r["window"]] = [r["first"], r["last"], r["first_1626"]]
+        VJ.setdefault(r["pair"], {}).setdefault(r["window"], {})[r["variant"]] = [r["trades"], r6(r["win"]), r6(r["mean_extra"]), r6(r["cagr"]), r6(r["excess"]), r6(r["excess_val"]), r6(r["maxdd"]), r6(r["cagr_5050"]), r["open"]]
+        VW.setdefault(r["pair"], {})[r["window"]] = [r["first"], r["last"], r["first_val"]]
     DATA = {"windows": [[w, lab, f] for w, lab, f, _ in ZW.WINDOWS], "wlab": WLAB, "pairs": ORDER, "nice": {p: nice(p) for p in ORDER}, "pool": POOL, "defaults": {"w": ZW.DEFAULT, "pair": DEFAULT_PAIR, "pool": "index"},
             "lo": LO, "hi": HI, "perms": P, "ks": list(KS), "horizon": HORIZON, "deeper": DEEPER, "meas": [list(m) for m in MEAS], "fan": FAN, "hold": HOLD, "uni": UNJ, "ew": EW,
-            "vars": [[v[0], v[1]] for v in VARS], "var": VJ, "vwin": VW, "vsum": VSUM, "vall": VALL, "wf": WF, "filt": FILT, "fsum": FSUM, "split": SPLIT.date().isoformat(), "wfstart": WF_START.date().isoformat(),
+            "vars": [[v[0], v[1]] for v in VARS], "var": VJ, "vwin": VW, "vsum": VSUM, "vall": VALL, "wf": WF, "filt": FILT, "fsum": FSUM, "split": SPLIT.date().isoformat(), "wfstart": WF_START.date().isoformat(), "vlab": VLAB, "spanlab": SPANLAB,
             "pal": {"blue": E1.BLUE, "orange": E1.ORANGE, "divLight": E1.DIV_LIGHT, "divDark": E1.DIV_DARK}}
     blob = json.dumps(DATA, separators=(",", ":"), ensure_ascii=False, default=lambda o: o.item() if hasattr(o, "item") else str(o)).replace("</", "<\\/")
     def sel(i, lab, opts, default):
@@ -428,15 +443,16 @@ def main():
     key_card = (f"<p style='margin:4px 0'><b>Can good trades be picked before entry?</b> Trained only on trades already closed and predicting each next year ({lrw['first']} → {lrw['last']}, {lrw['n_ix']} index-pair trades): "
                 f"logistic regression AUC {lrw['auc']:.3f} (percentile {lrw['pct']:.1f} among {NLR} label shuffles, whose median is {lrw['null_med']:.3f}); gradient-boosted trees {gbw['auc']:.3f} (percentile {gbw['pct']:.1f} among {NGB}). "
                 f"0.5 = no better than a coin. Trades the logistic model rated above its training median: mean extra {fp(lrw['ix'][1])}, {pc(lrw['ix'][2])} worked; below: {fp(lrw['ix'][4])}, {pc(lrw['ix'][5])}. "
-                f"As an entry filter (from 2010) it beats the rule with every entry in {fl['beats_every']} of {fl['n']} index pair-windows and is ahead of 50/50 in {fl['ahead_5050']} (every entry: {fl['every_ahead_5050']}); "
+                f"As an entry filter (from {WF_START.year}) it beats the rule with every entry in {fl['beats_every']} of {fl['n']} index pair-windows and is ahead of 50/50 in {fl['ahead_5050']} (every entry: {fl['every_ahead_5050']}); "
                 f"against random skipping at the same rate it is above the median in {fl['above_random_median']} and notable in {fl['notable']} (trees: {fg['above_random_median']} and {fg['notable']}).</p>"
-                f"<p style='margin:4px 0'><b>Managing the trade:</b> of the exits and entries tried, the one ahead of 50/50 in the most index pair-windows from 2016 is <i>{html.escape(vlab[best_v])}</i>: {VALL[best_v][3]} of 42 (Rule R: {VALL['base'][3]}); it beats Rule R in {VALL[best_v][1]} of 42 from 2016.</p>")
+                f"<p style='margin:4px 0'><b>Managing the trade:</b> of the exits and entries tried, the one ahead of 50/50 in the most index pair-windows from {SPLIT.year} is <i>{html.escape(vlab[best_v])}</i>: {VALL[best_v][3]} of 42 (Rule R: {VALL['base'][3]}); it beats Rule R in {VALL[best_v][1]} of 42 from {SPLIT.year}.</p>")
     from plotly.offline import get_plotlyjs
     H = [E1.PAGE_HEAD.replace("__CSS__", E1.CSS + CSS_EXTRA).replace("<title>Ratio cycles</title>", "<title>Good and bad trades</title>"),
          "<header class='bar'><div class='bar-inner'><b>E07 · good and bad trades</b><span class='tag'>EXPLORATORY</span>", controls, "<button id='theme' type='button'>Dark</button></div></header><main>",
          "<h1>Good and bad trades: what tells them apart, and can the rule be managed better?</h1>",
+         f"<p class='note'><b>Data:</b> {html.escape(LT.NOTE)}. On the gold pairs every variant switches too, and a gold trade's extra uses what was held (gold or the liquid ETF). Split {SPLIT.date()} (E06's); walk-forward from {WF_START.date()}.</p>",
          f"<p>The rule (T03's): every Friday close, z = (ratio − its trailing mean) ÷ its trailing sd over the chosen z window. From 50/50, the first week z crosses below −1 → hold only the first index; above +1 → hold only the second. Back to 50/50 when z returns to 0; trade the next session at the day's average price, 10.4 bps each way. "
-         f"<b>Good trade</b> = the held index beat the other between entry and exit (before costs). {len(TR):,} trades over seven z windows and ten pairs ({len(CL):,} closed), the same as E06's. Generated {audit['run_date']} from the approved data of 2026-11-12. <b>Description, not a finding.</b></p>",
+         f"<b>Good trade</b> = the held index beat the other between entry and exit (before costs). {len(TR):,} trades over seven z windows and ten pairs ({len(CL):,} closed), the same as E06's. Generated {audit['run_date']} from the latest data (the note above). <b>Description, not a finding.</b></p>",
          "<div class='card'>" + key_card + "</div>",
          "<h2>1 · Good and bad trades, side by side</h2><p class='note'>After the signal week (week 0), how far z stayed stretched on the entry side (1 = the band, 0 = the mean, where the trade exits) and how the held index did against the other from the entry fill. Lines = medians, bands = middle half of the trades. The paths continue after a trade has closed, to show what the market did; the colour is the trade's actual outcome.</p>",
          "<div class='card'><div id='g_fan_s' class='plot'></div></div><div class='card'><div id='g_fan_x' class='plot'></div><div id='t_hold'></div></div>",
@@ -447,16 +463,16 @@ def main():
          "<div class='card'><div id='g_ew' class='plot'></div><div id='t_ew'></div></div>",
          "<div class='card'><div id='g_vall' class='plot'></div></div>",
          "<div class='card'><div id='g_var' class='plot'></div><div id='t_var'></div></div>",
-         "<h2>4 · Can good trades be picked before entry? A walk-forward test</h2><p class='note'>Each year from 2010, two models (a logistic regression and small gradient-boosted trees) are trained on the index-pair trades already closed, using E06's 24 conditions, the six measures of section 2 and the window's length, and they rate the trades entered that year. "
+         "<h2>4 · Can good trades be picked before entry? A walk-forward test</h2><p class='note'>Each year from " + str(WF_START.year) + ", two models (a logistic regression and small gradient-boosted trees) are trained on the index-pair trades already closed, using E06's 24 conditions, the six measures of section 2 and the window's length, and they rate the trades entered that year. "
          "AUC = the chance a random good trade is rated above a random bad one (0.5 = a coin). The same procedure on labels shuffled within each pair and window shows what luck gives. As a filter, the rule enters only where the rating is at or above the training median; it is compared with the rule with every entry, with 50/50, and with filters that skip entries at random at the same rate.</p>",
          "<div class='card'><div id='g_auc' class='plot'></div><div id='t_wf'></div></div>",
          "<div class='card'><div id='g_years' class='plot'></div></div>",
          "<div class='card'><div id='t_filt'></div></div>",
          "<h2>Method and limits</h2><div class='card'><ul>"
-         "<li><b>Trades and book.</b> explore/E01_ratio_cycles/variants.py and analysis/ratio_engine.book (fills next session at OHLC4, 10.4 bps per side, units held, daily NAV); the variants change only the state machine. With no added rule it equals Rule R on every pair and window (checked), and the trades equal E06's.</li>"
+         "<li><b>Trades and book.</b> explore/E01_ratio_cycles/variants.py and analysis/ratio_engine.book (fills next session at OHLC4, 10.4 bps per side, units held, daily NAV); the variants change only the state machine. With no added rule it equals Rule R on every pair and window (checked), and the trades equal E06's. On the gold pairs every variant holds the liquid ETF in place of gold in a week whose decision falls in gold's weekly supertrend SELL (variants.book3: next session's fill, 10.4 bps per side); 50/50 bought once is not switched.</li>"
          "<li><b>Measures.</b> From the ratio's decision-week closes up to the entry decision; recomputed from the history cut at 12 dates per pair (checked equal).</li>"
          f"<li><b>Walk-forward.</b> Training uses only trades whose exit was before 1 January of the year predicted (asserted). The windows' trades overlap, so the pooled counts overstate independent evidence. Shuffles: {NLR} (logistic) and {NGB} (trees), within each pair and window.</li>"
-         "<li><b>Limits.</b> The same history that refuted the rule, searched again from new angles; neighbouring variants share most of their trades; 2016–2026 is regime-heavy; gold is a futures continuation with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); Micro250 pairs have four years. Design written before the first run: explore/E07_good_bad/E07.md.</li></ul></div>",
+         "<li><b>Limits.</b> The same history that refuted the rule, searched again from new angles; neighbouring variants share most of their trades; " + VLAB + " is regime-heavy; all series from 2011 (the first band a year later); gold is a futures continuation with an unconfirmed roll on 2026-01-30 (F-RA-D-OPEN-2); the liquid level has no recorded source before 2024-01-24 (F-RA-D17); Micro250 pairs have four years. Design written before the first run: explore/E07_good_bad/E07.md.</li></ul></div>",
          "</main>", f"<script id='e07-data' type='application/json'>{blob}</script>", "<script>" + get_plotlyjs() + "</script>", "<script>" + PAGE_JS + "</script></body></html>"]
     out = os.path.join(OUT, "E07_goodbad.html"); open(out, "w", encoding="utf-8").write("\n".join(H))
     print(f"done in {time.time() - t0:.0f}s; page {os.path.getsize(out) / 1e6:.1f} MB → {out}")
@@ -520,7 +536,7 @@ function drawUni(s){
     hovertemplate:'%{y}: %{text}<extra></extra>'}],layout(two('The ratio\'s character at entry and the trade\'s extra · '+lab+' · '+poolName(s.pool),'rank correlation within each pair (percentile among '+D.perms.toLocaleString('en')+' shuffles); blue = notable; positive = higher values went with better trades'),400,
     {margin:{l:170,r:60,t:100,b:40},xaxis:ax({range:(function(){const m=Math.max(0.05,...y.filter(q=>q!==null).map(Math.abs))*1.7;return [-m,m];})(),title:{text:'rank correlation with the extra',font:{color:c.ink2}},zeroline:true,zerolinecolor:c.axis}),yaxis:ax({autorange:'reversed'})}),CFG);
   const rows=ms.map(m=>{const r=src[m[0]], a=UA[m[0]];return [m[1], r?(r[0]>=0?'+':'')+r[0].toFixed(2)+' ('+pq(r[1])+')':'—', a?(a[0]>=0?'+':'')+a[0].toFixed(2)+' ('+pq(a[1])+')':'—', a?f2(a[2])+' / '+f2(a[3]):'—', a?fp(a[5])+' / '+fp(a[6])+' / '+fp(a[7]):'—', a?pc(a[8])+' / '+pc(a[9])+' / '+pc(a[10]):'—'];});
-  document.getElementById('t_uni').innerHTML=table(['measure',lab,'all windows pooled','before 2016 / from 2016','all windows: mean extra, low / middle / high third','worked, low / middle / high third'],rows);
+  document.getElementById('t_uni').innerHTML=table(['measure',lab,'all windows pooled','before '+D.split.slice(0,4)+' / from '+D.split.slice(0,4),'all windows: mean extra, low / middle / high third','worked, low / middle / high third'],rows);
 }
 function drawEW(s){
   const c=th(), E=D.ew[s.w][s.pool], ks=D.ks.filter(k=>E[String(k)][0]>0), tr=[];
@@ -534,22 +550,22 @@ function drawEW(s){
 function heatColors(){return isDark()?[[0,'#86b6ef'],[0.2,'#3987e5'],[0.4,'#34465e'],[0.5,'#383835'],[0.6,'#5e3a3a'],[0.8,'#e66767'],[1,'#f29a9a']]:[[0,'#104281'],[0.2,'#2a78d6'],[0.4,'#cde2fb'],[0.5,'#f0efec'],[0.6,'#f9d3d2'],[0.8,'#e34948'],[1,'#a32b2a']];}
 function drawVar(s){
   const c=th(), V=D.vars;
-  // across all windows: mean excess over 50/50 from 2016, six index pairs
+  // across all windows: mean excess over 50/50 from the split, six index pairs
   const ws=D.windows.map(x=>x[0]);
-  const z1=V.map(vr=>ws.map(w=>D.vsum[w][vr[0]][5])), t1=V.map(vr=>ws.map(w=>D.vsum[w][vr[0]][3]+'/6')), h1=V.map(vr=>ws.map(w=>{const q=D.vsum[w][vr[0]];return vr[1]+', z window '+wl(w)+'<br>six index pairs, from 2016: mean excess over 50/50 '+fpp(q[5])+'; ahead of 50/50 in '+q[3]+' of 6; ahead of Rule R in '+q[1]+' of 6<br>whole window: mean excess '+fpp(q[4])+', ahead of 50/50 in '+q[2]+'; mean share worked '+pc(q[6])+', '+q[7]+' closed trades';}));
+  const z1=V.map(vr=>ws.map(w=>D.vsum[w][vr[0]][5])), t1=V.map(vr=>ws.map(w=>D.vsum[w][vr[0]][3]+'/6')), h1=V.map(vr=>ws.map(w=>{const q=D.vsum[w][vr[0]];return vr[1]+', z window '+wl(w)+'<br>six index pairs, from '+D.split.slice(0,4)+': mean excess over 50/50 '+fpp(q[5])+'; ahead of 50/50 in '+q[3]+' of 6; ahead of Rule R in '+q[1]+' of 6<br>whole window: mean excess '+fpp(q[4])+', ahead of 50/50 in '+q[2]+'; mean share worked '+pc(q[6])+', '+q[7]+' closed trades';}));
   const zr=Math.max(0.01,...z1.flat().filter(x=>x!==null).map(Math.abs));
   Plotly.react('g_vall',[{type:'heatmap',z:z1,x:ws.map(wl),y:V.map(x=>x[1]),text:t1,texttemplate:'%{text}',customdata:h1,hovertemplate:'%{customdata}<extra></extra>',zmin:-zr,zmax:zr,colorscale:heatColors(),xgap:2,ygap:2,
     colorbar:{thickness:12,tickformat:'.1%',tickfont:{color:c.muted},title:{text:'mean excess',side:'right',font:{color:c.ink2}}}}],
-    layout(two('Exits and entries, every z window · six index pairs, from 2016-01-01','colour = mean excess CAGR over 50/50 bought once; label = index pairs (of 6) ahead of 50/50; red = ahead'),440,{margin:{l:250,r:24,t:100,b:40},xaxis:ax({side:'top',showgrid:false,showline:false}),yaxis:ax({autorange:'reversed',showgrid:false,showline:false})}),CFG);
+    layout(two('Exits and entries, every z window · six index pairs, from '+D.split,'colour = mean excess CAGR over 50/50 bought once; label = index pairs (of 6) ahead of 50/50; red = ahead'),440,{margin:{l:250,r:24,t:100,b:40},xaxis:ax({side:'top',showgrid:false,showline:false}),yaxis:ax({autorange:'reversed',showgrid:false,showline:false})}),CFG);
   // the chosen window: every pair
-  const ps=D.pairs, z2=V.map(vr=>ps.map(p=>D.var[p][s.w][vr[0]][4])), h2=V.map(vr=>ps.map(p=>{const q=D.var[p][s.w][vr[0]], wn=D.vwin[p][s.w];return D.nice[p]+' · '+vr[1]+'<br>'+wn[0]+' → '+wn[1]+': excess over 50/50 '+fpp(q[4])+' (from 2016: '+fpp(q[5])+')<br>'+q[0]+' closed trades, '+pc(q[1])+' worked, mean extra '+fp(q[2])+'; CAGR '+fp(q[3])+', max drawdown '+fp(q[6],0);}));
+  const ps=D.pairs, z2=V.map(vr=>ps.map(p=>D.var[p][s.w][vr[0]][4])), h2=V.map(vr=>ps.map(p=>{const q=D.var[p][s.w][vr[0]], wn=D.vwin[p][s.w];return D.nice[p]+' · '+vr[1]+'<br>'+wn[0]+' → '+wn[1]+': excess over 50/50 '+fpp(q[4])+' (from '+D.split.slice(0,4)+': '+fpp(q[5])+')<br>'+q[0]+' closed trades, '+pc(q[1])+' worked, mean extra '+fp(q[2])+'; CAGR '+fp(q[3])+', max drawdown '+fp(q[6],0);}));
   const zr2=Math.max(0.01,...z2.flat().filter(x=>x!==null).map(Math.abs));
   Plotly.react('g_var',[{type:'heatmap',z:z2,x:ps.map(p=>D.nice[p]),y:V.map(x=>x[1]),text:z2.map(r=>r.map(x=>x===null?'':(x*100).toFixed(1))),texttemplate:'%{text}',customdata:h2,hovertemplate:'%{customdata}<extra></extra>',zmin:-zr2,zmax:zr2,colorscale:heatColors(),xgap:2,ygap:2,
     colorbar:{thickness:12,tickformat:'.1%',tickfont:{color:c.muted},title:{text:'excess',side:'right',font:{color:c.ink2}}}}],
-    layout(two('Every pair at z window '+wl(s.w)+' · excess CAGR over 50/50 bought once, whole window (pp a year)','index pairs from the rule\'s first day in 2006 (Micro250: 2022), gold pairs from 2015, to 2026-08-28; red = ahead of 50/50'),460,{margin:{l:250,r:24,t:100,b:90},xaxis:ax({tickangle:-30,showgrid:false,showline:false}),yaxis:ax({autorange:'reversed',showgrid:false,showline:false})}),CFG);
+    layout(two('Every pair at z window '+wl(s.w)+' · excess CAGR over 50/50 bought once, whole window (pp a year)',D.spanlab+'; red = ahead of 50/50'),460,{margin:{l:250,r:24,t:100,b:90},xaxis:ax({tickangle:-30,showgrid:false,showline:false}),yaxis:ax({autorange:'reversed',showgrid:false,showline:false})}),CFG);
   const wn=D.vwin[s.p][s.w];
-  document.getElementById('t_var').innerHTML="<p class='note' style='margin:8px 0 4px'><b>"+D.nice[s.p]+'</b>, z window '+wl(s.w)+', '+wn[0]+' → '+wn[1]+' (from 2016: '+wn[2]+' →):</p>'+
-    table(['variant','closed trades','worked','mean extra','CAGR','excess over 50/50','from 2016','max drawdown'],V.map(vr=>{const q=D.var[s.p][s.w][vr[0]];return [vr[1],q[0]+(q[8]?' (+'+q[8]+' open)':''),pc(q[1]),fp(q[2]),fp(q[3]),fpp(q[4]),fpp(q[5]),fp(q[6],0)];}))+
+  document.getElementById('t_var').innerHTML="<p class='note' style='margin:8px 0 4px'><b>"+D.nice[s.p]+'</b>, z window '+wl(s.w)+', '+wn[0]+' → '+wn[1]+' (from '+D.split.slice(0,4)+': '+wn[2]+' →):</p>'+
+    table(['variant','closed trades','worked','mean extra','CAGR','excess over 50/50','from '+D.split.slice(0,4),'max drawdown'],V.map(vr=>{const q=D.var[s.p][s.w][vr[0]];return [vr[1],q[0]+(q[8]?' (+'+q[8]+' open)':''),pc(q[1]),fp(q[2]),fp(q[3]),fpp(q[4]),fpp(q[5]),fp(q[6],0)];}))+
     "<p class='note'>50/50 bought once: CAGR "+fp(D.var[s.p][s.w].base[7])+'.</p>';
 }
 function drawWF(s){

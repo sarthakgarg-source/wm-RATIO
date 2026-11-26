@@ -1,12 +1,34 @@
 {
- "run_date": "2026-11-20",
+ "run_date": "2026-11-26",
  "status": "EXPLORATORY",
+ "data": "latest data (approved load_india_latest, 2026-11-26): N100, MC100, SC100 and MCX gold to 2026-11-20, Micro250 to 2026-08-28, all from 2011-01-01; whenever a strategy would hold gold while gold's weekly supertrend is SELL it holds the liquid ETF instead (the switch; the liquid level has no recorded source before 2024-01-24, F-RA-D17)",
+ "us_pairs_start": {
+  "index": "2006-01-02",
+  "gold": "2015-01-12"
+ },
  "inputs": {
   "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
   "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227",
   "us_etf_ohlcv.csv": "84729a36edc18c343c4d1768cec41c577d0ff5850265e2f3aabdb1e841904e85",
   "us_etf_dividends.csv": "04392d6ff812359e1f2acbf89efd038dc81565315f340bc471cdc9615d0251e1",
-  "us_gold_ohlcv.csv": "75fa5f1bc47c0df7bf0f95b21c2d744d85c72fb7f039990d0dca1517fa4d3b92"
+  "us_gold_ohlcv.csv": "75fa5f1bc47c0df7bf0f95b21c2d744d85c72fb7f039990d0dca1517fa4d3b92",
+  "us_small_ohlcv.csv": "726cb635d29845fe1645db33ae1c2ef3b85bd47332d2e9f55e1bdba0fb02a09d",
+  "us_small_dividends.csv": "332d0ae744bc2c815757ad742e1018efa4067015fe96c580ec64ef39ecbc3db3",
+  "us_factor_ohlcv.csv": "9156e69c99dacc81b32df98bdebd8b1211edf681d4d4b512110971dc04b27a5e",
+  "us_factor_dividends.csv": "d19722ff9d822e21429cdccf3ea3ffbb150b852d24382f81dcec804c96f6f684",
+  "us_factor_splits.csv": "8f2efbe210d45f1217593a4c0d3ee4725c86bfdfc24f106935c772b2de7cb8c4",
+  "us_sp_factor_ohlcv.csv": "ae51bf2de5aeac12947bac8d1570d248673732ba0345cba0789b17e5be39a792",
+  "us_sp_factor_dividends.csv": "5581388c1d149a5bc53a8e4dc1fb27a2b7e2cca66734b050584c0ef88635c8ce",
+  "us_sp_factor_splits.csv": "9353e39fe02edb88b4ccb4334e951fa25c0908a7a3e88dd6f941ff55d71edae8",
+  "aa_index_n100_pre2019.csv": "167c73492dd424cadf6e665546321ffd31d7da35ce39142f93c6f7282d742089",
+  "aa_index_n100_2019_2026.csv": "4563e0b66f1aeeb0e7c0926d43e944b8b1bfe52f8527136e6f55042dd04c677b",
+  "aa_index_mc100_pre2019.csv": "6586a0a392cbd73c3e6a8ee5d9644ba255c11f0171cb6bc3fd1cee4e6b26a65a",
+  "aa_index_mc100_2019_2026.csv": "97387340ac4803b78ecf1097695624c0e1514ac608c0a09aa3ac07f66659d129",
+  "aa_index_sc100_pre2019.csv": "6b6ebc3a3144ec74017cf24365efd0845ba6c639ca1a43603a646c2914fc9c21",
+  "aa_index_sc100_2019_2026.csv": "e2421301b6ed87af64dbb67f06671bb1ec7591dc1b7d512c64385e7018cda04c",
+  "aa_mauc1_daily.csv": "61cde69e5ce326072127095e4442a0f860555201a996424cc2d98a613511cb86",
+  "aa_liquid_lbes.csv": "26ae7f7c9e876ab41c31036926b418dbec69d5736774e5e91864cab1dd2c4ffd",
+  "aa_liquid_case.csv": "ac17a7fb1f2610010842a622231a9b8b6a71fcb3fd7b56bef95196eab555a749"
  },
  "draws_per_null": 1000,
  "seed": "default_rng([universe_id, pair_id (+100 for N-B), draw, window_id])",
@@ -20,17 +42,17 @@
   "null_draws": 328000,
   "null_count_mismatch": 0
  },
- "trades": 5961,
- "closed": 5838,
+ "trades": 5885,
+ "closed": 5756,
  "pooled_w52": {
   "index": {
    "pairs": 6,
    "pos_comp": 0,
-   "median_per_year": -0.016169,
-   "trades": 101,
-   "won": 0.663366,
-   "mean": -0.02308,
-   "median": 0.020824,
+   "median_per_year": -0.025194,
+   "trades": 73,
+   "won": 0.60274,
+   "mean": -0.033513,
+   "median": 0.018555,
    "na_hi": 0,
    "na_lo": 0,
    "nb_hi": 0,
@@ -38,12 +60,12 @@
   },
   "gold": {
    "pairs": 4,
-   "pos_comp": 1,
-   "median_per_year": -0.101185,
-   "trades": 43,
-   "won": 0.604651,
-   "mean": -0.098741,
-   "median": 0.037878,
+   "pos_comp": 0,
+   "median_per_year": -0.099697,
+   "trades": 65,
+   "won": 0.676923,
+   "mean": -0.08112,
+   "median": 0.044443,
    "na_hi": 0,
    "na_lo": 0,
    "nb_hi": 0,
@@ -76,5 +98,5 @@
    "nb_lo": 0
   }
  },
- "seconds": 92
+ "seconds": 218
 }

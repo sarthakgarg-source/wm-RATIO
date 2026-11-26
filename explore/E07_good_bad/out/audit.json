@@ -1,9 +1,32 @@
 {
- "run_date": "2026-11-19",
+ "run_date": "2026-11-26",
  "status": "EXPLORATORY",
+ "data": "latest data (approved load_india_latest, 2026-11-26): N100, MC100, SC100 and MCX gold to 2026-11-20, Micro250 to 2026-08-28, all from 2011-01-01; whenever a strategy would hold gold while gold's weekly supertrend is SELL it holds the liquid ETF instead (the switch; the liquid level has no recorded source before 2024-01-24, F-RA-D17)",
+ "split": "2019-01-01",
+ "walkforward_start": "2015-01-01",
  "inputs": {
   "index_ohlcv_all.csv": "3499a3b9c942c95ecbd711540d7fb0d92246992dff27ae30864295592b6a2efa",
-  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227"
+  "MAUc1_daily.csv": "29dd9d3756ad48d61b3c00cc5e40e76ddadae7516f625c535083e1f28c8e3227",
+  "us_etf_ohlcv.csv": "84729a36edc18c343c4d1768cec41c577d0ff5850265e2f3aabdb1e841904e85",
+  "us_etf_dividends.csv": "04392d6ff812359e1f2acbf89efd038dc81565315f340bc471cdc9615d0251e1",
+  "us_gold_ohlcv.csv": "75fa5f1bc47c0df7bf0f95b21c2d744d85c72fb7f039990d0dca1517fa4d3b92",
+  "us_small_ohlcv.csv": "726cb635d29845fe1645db33ae1c2ef3b85bd47332d2e9f55e1bdba0fb02a09d",
+  "us_small_dividends.csv": "332d0ae744bc2c815757ad742e1018efa4067015fe96c580ec64ef39ecbc3db3",
+  "us_factor_ohlcv.csv": "9156e69c99dacc81b32df98bdebd8b1211edf681d4d4b512110971dc04b27a5e",
+  "us_factor_dividends.csv": "d19722ff9d822e21429cdccf3ea3ffbb150b852d24382f81dcec804c96f6f684",
+  "us_factor_splits.csv": "8f2efbe210d45f1217593a4c0d3ee4725c86bfdfc24f106935c772b2de7cb8c4",
+  "us_sp_factor_ohlcv.csv": "ae51bf2de5aeac12947bac8d1570d248673732ba0345cba0789b17e5be39a792",
+  "us_sp_factor_dividends.csv": "5581388c1d149a5bc53a8e4dc1fb27a2b7e2cca66734b050584c0ef88635c8ce",
+  "us_sp_factor_splits.csv": "9353e39fe02edb88b4ccb4334e951fa25c0908a7a3e88dd6f941ff55d71edae8",
+  "aa_index_n100_pre2019.csv": "167c73492dd424cadf6e665546321ffd31d7da35ce39142f93c6f7282d742089",
+  "aa_index_n100_2019_2026.csv": "4563e0b66f1aeeb0e7c0926d43e944b8b1bfe52f8527136e6f55042dd04c677b",
+  "aa_index_mc100_pre2019.csv": "6586a0a392cbd73c3e6a8ee5d9644ba255c11f0171cb6bc3fd1cee4e6b26a65a",
+  "aa_index_mc100_2019_2026.csv": "97387340ac4803b78ecf1097695624c0e1514ac608c0a09aa3ac07f66659d129",
+  "aa_index_sc100_pre2019.csv": "6b6ebc3a3144ec74017cf24365efd0845ba6c639ca1a43603a646c2914fc9c21",
+  "aa_index_sc100_2019_2026.csv": "e2421301b6ed87af64dbb67f06671bb1ec7591dc1b7d512c64385e7018cda04c",
+  "aa_mauc1_daily.csv": "61cde69e5ce326072127095e4442a0f860555201a996424cc2d98a613511cb86",
+  "aa_liquid_lbes.csv": "26ae7f7c9e876ab41c31036926b418dbec69d5736774e5e91864cab1dd2c4ffd",
+  "aa_liquid_case.csv": "ac17a7fb1f2610010842a622231a9b8b6a71fcb3fd7b56bef95196eab555a749"
  },
  "perms": 2000,
  "null_draws": {
@@ -25,45 +48,45 @@
   "cut_checks": 840,
   "cut_violations": [],
   "train_trades_closed_before_year": true,
-  "random_rate_max_abs_dev": 0.006087866108786644
+  "random_rate_max_abs_dev": 0.0058558558558558516
  },
- "trades": 2886,
- "closed": 2830,
+ "trades": 2810,
+ "closed": 2748,
  "walkforward": {
   "lr": {
-   "auc": 0.465,
-   "pct": 1.0,
-   "null_med": 0.501,
-   "null_hi": 0.525,
-   "n_ix": 1614,
-   "n_gold": 872
+   "auc": 0.501,
+   "pct": 53.5,
+   "null_med": 0.499,
+   "null_hi": 0.531,
+   "n_ix": 1250,
+   "n_gold": 913
   },
   "gb": {
-   "auc": 0.481,
-   "pct": 5.0,
-   "null_med": 0.503,
-   "null_hi": 0.524,
-   "n_ix": 1614,
-   "n_gold": 872
+   "auc": 0.464,
+   "pct": 1.0,
+   "null_med": 0.497,
+   "null_hi": 0.53,
+   "n_ix": 1250,
+   "n_gold": 913
   }
  },
  "filters": {
   "gb": {
-   "beats_every": 27,
-   "ahead_5050": 2,
+   "beats_every": 21,
+   "ahead_5050": 4,
    "every_ahead_5050": 0,
    "above_random_median": 16,
-   "notable": 3,
-   "median_pct": 39.0,
+   "notable": 0,
+   "median_pct": 34.5,
    "n": 42
   },
   "lr": {
-   "beats_every": 25,
+   "beats_every": 26,
    "ahead_5050": 1,
    "every_ahead_5050": 0,
-   "above_random_median": 15,
-   "notable": 1,
-   "median_pct": 28.7,
+   "above_random_median": 18,
+   "notable": 0,
+   "median_pct": 45.0,
    "n": 42
   }
  },
@@ -73,73 +96,73 @@
    0,
    0,
    0,
-   -0.020862,
-   -0.021915
+   -0.022621,
+   -0.022942
   ],
   "zs20": [
    34,
-   33,
+   37,
    3,
    4,
-   -0.016002,
-   -0.015099
+   -0.014628,
+   -0.012584
   ],
   "zs25": [
-   28,
    27,
-   3,
+   30,
    2,
-   -0.018238,
-   -0.017993
+   3,
+   -0.017023,
+   -0.0159
   ],
   "zs30": [
+   15,
    16,
-   17,
-   1,
    0,
-   -0.021559,
-   -0.02172
+   0,
+   -0.02254,
+   -0.021581
   ],
   "ts13": [
    29,
-   33,
+   31,
    0,
    0,
-   -0.017208,
-   -0.017249
+   -0.01748,
+   -0.017329
   ],
   "ts26": [
-   22,
-   23,
+   21,
+   18,
    0,
    0,
-   -0.024492,
-   -0.024539
+   -0.025706,
+   -0.025161
   ],
   "ts52": [
    8,
-   9,
+   10,
    0,
    0,
-   -0.022528,
-   -0.024992
+   -0.02462,
+   -0.025654
   ],
   "recross": [
-   23,
-   18,
+   22,
+   20,
    3,
    3,
-   -0.01629,
-   -0.017815
+   -0.017334,
+   -0.018104
   ],
   "rebound": [
+   18,
    19,
-   15,
    0,
-   0,
-   -0.020484,
-   -0.021614
+   1,
+   -0.021627,
+   -0.021459
   ]
  },
- "seconds": 388
+ "seconds": 435
 }

@@ -34,6 +34,7 @@ from analysis.ratio_engine import INDEX_PAIRS, MIN_OBS_FRAC, PAIRS, pair_frame  
 from analysis.ratio_engine import PIT as EnginePIT, decide  # noqa: E402  (z check only: the band's mean and sd columns are read)
 sys.path.insert(0, HERE)
 import zwin as ZW  # noqa: E402  (the z windows: weekly 13 / 26 / 52, daily 20 / 60 / 120 / 250)
+import latest as LT  # noqa: E402  (the latest data, 2026-11-26)
 
 BANDS = ((2, 4), (4, 8), (8, 13), (13, 26), (26, 52), (52, 104), (104, 208), (208, 520))   # cycle-length bands, weeks
 VR_K = (2, 4, 8, 13, 26, 52, 104)
@@ -360,7 +361,7 @@ def ab_html(a, b):
 # ------------------------------------------------------------------------------------------------------------ the run
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--draws", type=int, default=2000); D = ap.parse_args().draws
-    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = load_daily(); R = {}; PIT = [0, []]
+    t0 = time.time(); os.makedirs(OUT, exist_ok=True); px = LT.load_india(); LT.activate(px); R = {}; PIT = [0, []]
     ZC = {"engine_max_abs_diff": 0.0, "running_sums_max_abs_diff": 0.0, "rebuild_max_rel_diff": 0.0, "missing_mismatch": []}   # the z-score's checks
     ZWC = {"weekly_running_sums_max_abs_diff": 0.0, "daily_running_sums_max_abs_diff": 0.0, "pit_checks": 0, "pit_violations": []}   # the other windows' checks
     DAILY = tuple(w for w, _, f, _ in ZW.WINDOWS if f == "D"); Z_TESTED_D = (("beyond1", "days beyond ±1"), ("beyond2", "days beyond ±2"), ("med_str", "median stretch beyond ±1"))
@@ -494,7 +495,7 @@ def main():
     # (a percentile drifting from 95.4 to 94.9 changes the call but is not a disagreement)
     big = DC["flips"] & ((DC["pct_A_expanding_drift_removed"] - DC["pct_B_no_drift_removal"]).abs() >= 10)
     flip_pairs = [q for q in ORDER if int((big & (DC["pair"] == q)).sum()) >= 2]
-    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "inputs": fingerprints(), "draws": D, "seeds": {"sign_flips": f"default_rng([{SEED_SIGNS}, pair_id])", "month_shuffles": f"default_rng([{SEED_MONTHS}, pair_id])"},
+    audit = {"run_date": date.today().isoformat(), "status": "EXPLORATORY", "data": LT.NOTE, "inputs": fingerprints(), "draws": D, "seeds": {"sign_flips": f"default_rng([{SEED_SIGNS}, pair_id])", "month_shuffles": f"default_rng([{SEED_MONTHS}, pair_id])"},
              "pairs": PAIRS, "series": "plain ratio P_a / P_b on the last trading day of each ISO week (pair_frame); weekly change g_t = ln(r_t / r_t-1)",
              "point_in_time": {"drift": "expanding mean of the weekly changes before week t", "zigzag_h": f"expanding sd (n - 1) of the weekly changes before week t * sqrt({H_WEEKS})",
                                "burn_in_weeks": BURN, "random_walks": "the point-in-time residuals with random signs; no demeaning", "whole_history_estimates_used": "none",
@@ -748,7 +749,7 @@ def main():
     opts = "".join(f"<option value='{html.escape(p, quote=True)}'{' selected' if p == DEFAULT_PAIR else ''}>{nice(p)}</option>" for p in ORDER)
     H = [PAGE_HEAD.replace("__CSS__", CSS), "<header class='bar'><div class='bar-inner'><b>E01 · ratio cycles</b><span class='tag'>EXPLORATORY</span>",
          f"<label>Pair <select id='pair'>{opts}</select></label>{ZW.select_html()}<button id='theme' type='button'>Dark</button></div></header><main>",
-         "<h1>Is there cyclicality in the ratio series?</h1>",
+         "<h1>Is there cyclicality in the ratio series?</h1>", f"<p class='note'><b>Data:</b> {html.escape(LT.NOTE)}.</p>",
          f"<p>The ten pair ratios P_a ÷ P_b (plain, not logged), weekly, on each pair's common calendar as T02/T03 use it. Every statistic is compared with {D:,} random walks that have the ratio's own week-by-week volatility (each week's change kept, its sign flipped at random), so a pattern any random series would also show is not mistaken for a cycle. Generated {audit['run_date']} from the approved data of 2026-11-12. <b>Description, not a finding</b>: nothing here tests a trading rule; anything that looks usable needs its own pre-registered test.</p>"
          f"<p><b>Point-in-time throughout.</b> At every week, the drift that is removed is the average of the weekly changes <i>before</i> it, and the swing threshold comes from their sd (expanding windows, after a {BURN}-week warm-up). No number from later in the history enters any series, threshold or random walk; the band and the z-score are the trailing 52 weeks. "
          f"Checked, not assumed: each pair's history is cut at 12 dates and everything recomputed from the cut history (the z-score included) must equal the full run up to the cut, with the turning points found on the cut history the first ones of the full run — {PIT[0]} checks, {len(PIT[1])} violations. "

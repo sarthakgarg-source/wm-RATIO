@@ -114,9 +114,17 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              before and with the switch (while gold's weekly supertrend is SELL, its weight is held in the liquid ETF), against
              gold's SELL weeks slid in time (2026-11-26)
              E06_trade_search/ (E06.md design; search.py → out/E06_trades.html, E06_results.md, CSVs) — SEARCH: every
-             trade of the rule on all z windows with 24 conditions at entry; condition by condition; 7,211 rules found on
-             2006–2015 and checked on 2016–2026 and the gold pairs, against searches on shuffled outcomes; year by year and
-             against random skipping; a sortable explorer of every trade (2026-11-18)
+             trade of the rule on all z windows with 24 conditions at entry; condition by condition; rules found on the
+             first half of the history and checked on the second half and the gold pairs, against searches on shuffled
+             outcomes; year by year and against random skipping; a sortable explorer of every trade (2026-11-18)
+             RE-RUN 2026-11-26 (E01–E07, E09–E11; each design .md has a block of that date): the Indian parts on the latest
+             data (load_india_latest: N100, MC100, SC100 and MCX gold to 2026-11-20, all from 2011-01-01; Micro250 on its
+             earlier data, to 2026-08-28), through the shared module explore/E01_ratio_cycles/latest.py; whenever a strategy
+             would hold gold while gold's weekly supertrend is SELL it holds the liquid ETF instead (the desk chose to
+             replace the original rule; bought-and-held benchmarks are not switched); checks against T03's evidence (earlier
+             data) became checks against the engine on the same data. The US parts and E08 are unchanged. E06's split moved
+             to 2019-01-01 (6,805 rules found on index trades entered 2011–2018, checked on 2019–2026) and E07's walk-forward
+             to 2015. E11's first run is kept in explore/E11_multi_asset/earlier_run_2026-11-25/
 ```
 
 **Results (run `headline`, 2026-11-17):** the rule is **REFUTED** at the MDE (2.8–12.1 pp/yr). T02 at the 95th percentile:
