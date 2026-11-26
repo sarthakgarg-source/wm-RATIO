@@ -108,6 +108,11 @@ explore/     EXPLORATORY studies — description, never findings, never quoted a
              these funds before 2026): each pair's ±1 sd band (Rule R) and 50/50, the desk's supertrend on each fund and on each
              ETF ÷ SPY (relative, Rule RS), and a four-asset rotation book (absolute and relative supertrend, momentum, gate and
              rank, Rule R sleeves) against every shift of the signals in time (2026-11-26)
+             E13_gold_liquid/ (E13.md design; goldliquid.py → out/E13_gold_liquid.html, E13_results.md, CSVs) — gold on SELL goes
+             to the liquid ETF: every Indian gold-holding strategy of E03–E11 (T03's Rule R, E10's supertrend schemes and
+             momentum on the gold pairs, E11's India book) on the latest data from 2012 (load_india_latest; gold from 2011), as
+             before and with the switch (while gold's weekly supertrend is SELL, its weight is held in the liquid ETF), against
+             gold's SELL weeks slid in time (2026-11-26)
              E06_trade_search/ (E06.md design; search.py → out/E06_trades.html, E06_results.md, CSVs) — SEARCH: every
              trade of the rule on all z windows with 24 conditions at entry; condition by condition; 7,211 rules found on
              2006–2015 and checked on 2016–2026 and the gold pairs, against searches on shuffled outcomes; year by year and
